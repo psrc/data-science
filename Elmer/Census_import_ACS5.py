@@ -5,9 +5,7 @@
 # Load the libraries we need
 import pandas as pd
 import urllib.request
-import time
-import datetime as dt
-import matplotlib.pyplot as plt     
+  
 
 # I have some hard codes I need to get out of here.
 
@@ -67,11 +65,13 @@ for key in tables:
             dataset = 'acs/acs5'
             returns_numeric=  True
             url_call = create_census_url(dataset, census_data, geography_ids[geography_id][0], geography_id,base_year, my_key, data_type)
-            current_df = pd.rea6556ewd_json(download_census_data(url_call))
+            current_df = pd.read_json(download_census_data(url_call))
             print(current_df)
+            current_df.columns = ['a', 'est', 'state', 'county', 'tract']
+            current_df['varname'] = pd.Series(key, index=current_df.index)
 
 
-            new_df = new_df.append(current_df)
+            new_df = new_df.append(current_df.loc[:, ['varname', 'state', 'county', 'tract', 'est']])
 
     new_df.to_excel(writer, index = False)
 
