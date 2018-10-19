@@ -17,7 +17,7 @@ import gzip
 import getpass
 import glob
 
-my_key = 'enter yout census api key here'
+my_key = 'enter your census api key here'
 data_year = 2015
 acs_data_type = '5yr'
 

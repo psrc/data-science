@@ -8,7 +8,7 @@ import urllib
 import os
 import pyodbc
 
-my_key = '6d9263105b3ca3213e093323b4ece211ab49d4e5'
+my_key = 'enter your census api key here'
 data_years = ['2017']
 acs_data_type = '1yr'
 
@@ -17,7 +17,7 @@ output_directory = os.path.join(working_directory, 'outputs')
 
 # SQL Connection to our internal SQL database Elmer
 sql_conn = pyodbc.connect('DRIVER={SQL Server}; SERVER=sql2016\DSADEV;DATABASE=Elmer;trusted_connection=true')
-cursor = sql_conn.cursor() 
+cursor = sql_conn.cursor()
 
 # Create the output directory for the trip generation results
 if not os.path.exists(output_directory):
@@ -135,15 +135,13 @@ family_income = {'B19101_001':('Total Population with Family Income','Heading1')
              'B19101_017':('More than $200,000','Heading2')             
                }
 
-#census_tables = [[acs_data_type, 'B08303', commute_time,'Commute_Time'],
-#                 [acs_data_type, 'B08301', mode_share,'Commute_Mode'],
-#                 [acs_data_type, 'C17002', poverty_status,'Poverty'],
-#                 [acs_data_type, 'B25061', rent_cost,'Rent'],
-#                 [acs_data_type, 'B01001', population_breakdown,'Population'],
-#                 [acs_data_type, 'B19101', family_income,'Family_Income']                 
-#                ]
-
-census_tables = [[acs_data_type, 'B08303', commute_time,'Commute_Time']]
+census_tables = [[acs_data_type, 'B08303', commute_time,'Commute_Time'],
+                 [acs_data_type, 'B08301', mode_share,'Commute_Mode'],
+                 [acs_data_type, 'C17002', poverty_status,'Poverty'],
+                 [acs_data_type, 'B25061', rent_cost,'Rent'],
+                 [acs_data_type, 'B01001', population_breakdown,'Population'],
+                 [acs_data_type, 'B19101', family_income,'Family_Income']                 
+                ]
 
 column_names = ['Estimate','Margin_of_Error','DataTable','Subject','Level','Geography','Year']
 numeric_columns = ['Estimate','Margin_of_Error']
@@ -202,11 +200,20 @@ for tables in census_tables:
     # create a blank dataframe sized based on the number of columns in the census output we want
     new_df = pd.DataFrame(columns=column_names)
     
+    # Get list of tables in current database and drop if it already exists
+    table_names = []
+    for rows in cursor.tables():
+        if rows.table_type == "TABLE":
+            table_names.append(rows.table_name)
+    
+    table_exists = tables[3] in table_names
+    
+    if table_exists == True:
+        sql_statement = 'drop table ' + tables[3]
+        cursor.execute(sql_statement)
+        sql_conn.commit()
+    
     # Create tables in the central database to hold the results of the census output
-    sql_statement = 'drop table ' + tables[3]
-    cursor.execute(sql_statement)
-    sql_conn.commit()
-
     sql_statement = 'create table '+tables[3]+'(Record_ID varchar(50), DataTable varchar(50), Subject varchar(50), Estimate int, Margin_of_Error int, Geography varchar(50), Year int)'
     cursor.execute(sql_statement)
     sql_conn.commit()
@@ -258,8 +265,8 @@ for tables in census_tables:
     
     # Popualte a table in the database with the tile of the current table
     for index,row in new_df.iterrows():
-        print 'Working on Data in Row #' + str(row)
-        cursor.execute("INSERT INTO commute_time([Record_ID],[Subject],[Estimate],[Geography],[Year]) values (?,?,?,?,?)", row['Record_ID'], row['Subject'], row['Estimate'], row['Geography'], row['Year']) 
+        sql_state = 'INSERT INTO ' + tables[3] + '([Record_ID],[DataTable],[Subject],[Estimate],[Margin_of_Error],[Geography],[Year]) values (?,?,?,?,?,?,?)'
+        cursor.execute(sql_state, row['Record_ID'], row['DataTable'], row['Subject'], row['Estimate'], row['Margin_of_Error'], row['Geography'], row['Year']) 
         sql_conn.commit()
     
 # Close the central database
