@@ -1,25 +1,27 @@
 # This script creates data summaries in the PSRC region
 # Created by Puget Sound Regional Council Staff
-# December 2017
+# October 2018
 
 # Load the libraries we need
 import pandas as pd
 import urllib.request
+import pyodbc
   
+# SQL Connection to our internal SQL database Elmer
+sql_conn = pyodbc.connect('DRIVER={SQL Server}; SERVER=sql2016\DSADEV;DATABASE=Elmer;trusted_connection=true')
+cursor = sql_conn.cursor() 
 
-# I have some hard codes I need to get out of here.
 
-
-working_directory = r'J:\Staff\ChrisP\ElmerStuff\Census\\'
+working_directory = r'../../'
 my_key = 'f9776be472619b8476b0dfdd8f1472a7de7ca2d5'
 base_year ='2016'
 
 
 geography_ids = {'033': ('county','King','co'),
-                       '035': ('county','Kitsap','co'),
-                       '053': ('county','Pierce','co'),
-                       '061': ('county','Snohomish','co')
-                      }
+                 '035': ('county','Kitsap','co'),
+                 '053': ('county','Pierce','co'),
+                 '061': ('county','Snohomish','co')
+                }
 
 
 
@@ -66,14 +68,21 @@ for key in tables:
             returns_numeric=  True
             url_call = create_census_url(dataset, census_data, geography_ids[geography_id][0], geography_id,base_year, my_key, data_type)
             current_df = pd.read_json(download_census_data(url_call))
-            print(current_df)
             current_df.columns = ['a', 'est', 'state', 'county', 'tract']
             current_df['varname'] = pd.Series(key, index=current_df.index)
-
-
+            current_df = current_df[1:] #trim the column names in row 1
+            print(current_df.head(5))
             new_df = new_df.append(current_df.loc[:, ['varname', 'state', 'county', 'tract', 'est']])
 
-    new_df.to_excel(writer, index = False)
-
+    #new_df.to_excel(writer, index = False)
+    #writer.save()
     
-    writer.save()
+    # Popualte a table in the database with the tile of the current table
+    for index,row in new_df.iterrows():
+        print('Working on Data in Row #' + str(row))
+        cursor.execute("INSERT INTO Census.tblStageVarsByTract(varname,[state],[county],[tract],[est]) values (?,?,?,?,?)", row['varname'], row['state'], row['county'], row['tract'], row['est']) 
+        sql_conn.commit()
+    
+# Close the central database
+sql_conn.close()
+    
