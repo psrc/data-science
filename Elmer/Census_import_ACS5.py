@@ -80,7 +80,7 @@ for key in tables:
     # Popualte a table in the database with the tile of the current table
     for index,row in new_df.iterrows():
         print('Working on Data in Row #' + str(row))
-        cursor.execute("INSERT INTO Census.tblStageVarsByTract(varname,[state],[county],[tract],[est]) values (?,?,?,?,?)", row['varname'], row['state'], row['county'], row['tract'], row['est']) 
+        cursor.execute("INSERT INTO Census.tblStageVarByTract(varname,[state],[county],[tract],[est]) values (?,?,?,?,?)", row['varname'], row['state'], row['county'], row['tract'], row['est']) 
         sql_conn.commit()
     
 # Close the central database
