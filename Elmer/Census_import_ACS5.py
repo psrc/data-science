@@ -65,7 +65,7 @@ for key in tables:
             label ='estimate'
             data_type = 'E'
             dataset = 'acs/acs5'
-            returns_numeric=  True
+            returns_numeric= True
             url_call = create_census_url(dataset, census_data, geography_ids[geography_id][0], geography_id,base_year, my_key, data_type)
             current_df = pd.read_json(download_census_data(url_call))
             current_df.columns = ['a', 'est', 'state', 'county', 'tract']
