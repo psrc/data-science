@@ -1,0 +1,17 @@
+Create objects from database:
+	dictSummaryLevels #summary levels to be downloaded
+	dictVariables #Census variables to be downloaded
+	dictCounties #ID codes for the four counties we will be downloading data for
+	dfGeographicUnits #list of every individual geographic unit at various summary levels within the four counties
+	
+	Download tract data:
+		for each CensusFile in dictDataFiles:
+			CensusFileID = dictDataFiles[CensusFile] for each variable in dictVariables:
+				VarID <- the numeric value for variable
+				for each county in dictCounties:
+					dfRawTractData <- county-tract-level data
+					join dfRawTractData:
+						with dfGeographicUnits on county and tract to get LogicalRecID
+					dfSummaryData < dfRawTractData [CensusFileID, VarID, LogicalRecID, Estimate]
+					
+
