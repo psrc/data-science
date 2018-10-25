@@ -45,7 +45,7 @@ def create_census_url(dataset, data_tables, geography_type, geography_id, year, 
 
 def download_census_data(data_url):
 
-    response = urllib.request.urlopen(data_url)
+    response = urllib.urlopen(data_url)
     census_data = response.read()
     
     return census_data
