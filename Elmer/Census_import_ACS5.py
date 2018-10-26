@@ -28,7 +28,16 @@ geography_ids = {'033': ('county','King','co'),
 ## Dictionaries for Census Data Tables with labels
 census_vars = {'B25104_001E' : 'MONTHLY HOUSING COSTS',
           'B01001_001E' : 'Sex by Age - total estimate'}
-
+## Build list of Census data tablse
+tables_to_download = ["B01001", "B01003", "B02001", "B03002"]
+vars_to_download = []
+census_vars = pd.read_json("variables.json")
+census_varnames = census_vars.index.tolist()
+for v in census_varnames:
+	if v.find("_") > 1:
+		candidate_table_name = v.split("_")[0]
+		if candidate_table_name in tables_to_download:
+			vars_to_download.append(v)
 
 
 
@@ -50,11 +59,14 @@ def download_census_data(data_url):
     
     return census_data
 
-for key in census_vars:
-    writer = pd.ExcelWriter(working_directory + census_vars[key]+'.xlsx')
     
-    print key
-    census_data = 'NAME,'+key
+cursor.execute("DELETE FROM Census.tblStageVarByTract")
+sql_conn.commit()
+for varname in vars_to_download:
+    writer = pd.ExcelWriter(working_directory + varname+'.xlsx')
+    
+    print varname
+    census_data = 'NAME,'+varname
     new_df = pd.DataFrame()
 
     for geography_id in geography_ids:
@@ -69,7 +81,7 @@ for key in census_vars:
             url_call = create_census_url(dataset, census_data, geography_ids[geography_id][0], geography_id,base_year, my_key, data_type)
             current_df = pd.read_json(download_census_data(url_call))
             current_df.columns = ['a', 'est', 'state', 'county', 'tract']
-            current_df['varname'] = pd.Series(key, index=current_df.index)
+            current_df['varname'] = pd.Series(varname, index=current_df.index)
             current_df = current_df[1:] #trim the column names in row 1
             print current_df.head(5)
             new_df = new_df.append(current_df.loc[:, ['varname', 'state', 'county', 'tract', 'est']])
