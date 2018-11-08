@@ -17,8 +17,6 @@ dlist <- read.assessor.files("Kitsap", "2018", "dwnld_2018_11_06")
 colnames(dlist$Residential_5_yr_dwelling_sales)[grep('\"', colnames(dlist$Residential_5_yr_dwelling_sales))] <- c("REET_no", "Living_area")
 dlist$Residential_5_yr_dwelling_sales$REET_no <- str_replace(dlist$Residential_5_yr_dwelling_sales$REET_no, '\"', "")
 dlist$Residential_5_yr_dwelling_sales$Living_area <- str_replace(dlist$Residential_5_yr_dwelling_sales$Living_area, '\"', "")
-dlist$Residential_5_yr_dwelling_sales$Sale_Dt <- lubridate::mdy(dlist$Residential_5_yr_dwelling_sales$Sale_Dt)
-dlist$Parcels$property_class <- as.character(dlist$Parcels$property_class)
 ```
 
 #### General Notes 
@@ -42,7 +40,7 @@ print.table.structure(dlist)
 
 #### Housing Type Descriptions  
 
-* Housing type descriptions from Residential_5_yr_dwelling_sales are similiar to those found in Dwellings with a few additional fields (likely MH types from MH table)
+* Housing type descriptions from Residential_5_yr_dwelling_sales are similiar to those found in Dwellings with a few additional values (likely MH types from MH table)
 ```{r}
 # Compare housing type descriptions
 unique(dlist$Residential_5_yr_dwelling_sales$House_type)
@@ -53,10 +51,11 @@ unique(dlist$Dwellings$house_type)
 assemble.housing.price.dataset <- function() {
   sales <- dlist$Residential_5_yr_dwelling_sales[, .(REET_no, Sale_Dt, Price, Acct_no, LRSN, Dwellings, House_type)]
   prcl <- dlist$Parcels[, .(rp_acct_id, acct_no, property_class)]
-  prcl[dlist$codes[Field_name == "property_class"], on = c("property_class" = "Code"), Description := i.Description]
-  sales[prcl, on = c("LRSN" = "rp_acct_id", "Acct_no" = "acct_no"), Description := i.Description]
+  prcl[dlist$codes[Field_name == "property_class"], on = c("property_class" = "Code"), property_class_description := i.Description]
+  sales[prcl, on = c("LRSN" = "rp_acct_id", "Acct_no" = "acct_no"), property_class_description := i.property_class_description]
 }
 
 df <- assemble.housing.price.dataset()
+
 ```
 
