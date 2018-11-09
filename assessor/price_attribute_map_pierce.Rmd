@@ -1,0 +1,64 @@
+---
+title: "Mapping Attributes: Housing Type and Sales"
+output: html_notebook
+---
+
+
+```{r}
+wrk.dir <- "C:/Users/CLam/Desktop/data-science/assessor"
+curr.dir <- getwd()
+setwd(wrk.dir)
+
+source("price_functions.R")
+
+# assemble all tables into list
+dlist <- read.assessor.files("Pierce", "2018", "dwnld_2018_02_07/data_formatted")
+# tidy data
+```
+
+#### General Notes 
+
+* https://www.co.pierce.wa.us/736/Data-Downloads
+* Field 'parcel_number' has been converted and formatted with leading zeros as field 'PIN'  
+
+#### Tables::Columns  
+
+* sale
+    + PIN, sale_price, sale_date
+* improvement
+    + PIN, building_id, primary_occupancy_description
+* improvement_builtas
+    + PIN, building_id, units
+```{r}
+# preview all columns in all tables
+print.table.structure(dlist)
+```
+```{r}
+# Analyze primary occupancy descriptions
+alldesc <- unique(dlist$improvement$primary_occupancy_description)
+seldesc <- sort(alldesc[str_which(alldesc, "[A|a]partment|[A|a]pt|plex|Residential$|[T|t]ownhouse|[C|c]ondo|MH\\sP|[M|m]ultiple|Manufactured\\sHome|[E|e]lderly")])
+
+print(alldesc)
+print(seldesc)
+```
+
+```{r}
+assemble.housing.price.dataset <- function() {
+  sales <- dlist$sale[, .(etn, PIN, sale_price, sale_date)]
+  impr <- dlist$improvement[, .(PIN, building_id, primary_occupancy_description)]
+  imprb <- dlist$improvement_builtas[, .(PIN, building_id, units)
+                                     ][, lapply(.SD, sum), .SDcols = "units", by = .(PIN, building_id)] # more observations than impr
+  
+  bldg <- imprb[impr, on = c("PIN", "building_id"), primary_occupancy_description := i.primary_occupancy_description
+                ][, lapply(.SD, sum), .SDcols = "units", by = .(PIN, primary_occupancy_description)]
+  # test for duplicates
+  # setkeyv(imprb, c('PIN', 'building_id'))
+  # test.dup <- imprb[, fD := .N > 1, by = key(imprb)][fD == "TRUE", ]
+  
+  sales[bldg, on = c("PIN"), `:=`(units = i.units, primary_occupancy_description = i.primary_occupancy_description)
+        ][is.na(units), units := 0]
+}
+
+df <- assemble.housing.price.dataset()
+```
+
