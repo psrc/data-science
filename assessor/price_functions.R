@@ -1,5 +1,6 @@
 library(data.table)
 library(tidyverse)
+library(openxlsx)
 
 # Convert selected columns to character
 convert.columns.to.char <- function(table, columnnames) {
@@ -20,7 +21,7 @@ read.assessor.files <- function(county, year, foldername) {
   base.dir <- "J:/Projects/UrbanSim/NEW_DIRECTORY/Databases/Access/Parcels"
   dir <- file.path(base.dir, county, year, foldername)
   
-  txtfiles <- list.files(dir, pattern = "\\.txt|\\.csv")
+  txtfiles <- list.files(dir, pattern = "\\.txt|\\.csv|\\.xlsx")
   
   dlist <- NULL
   for (file in txtfiles) {
@@ -46,6 +47,15 @@ read.assessor.files <- function(county, year, foldername) {
       } else {
       }
       convert.columns.to.date(t, "sale_date")
+    } else if (county == "Snohomish") {
+      if (ext == "txt") {
+        t <- fread(file.path(dir, file), header = TRUE, sep = '\t')
+      } else if (ext == "csv") {
+        t <- fread(file.path(dir, file), header = TRUE, sep = ",")
+      } else if (ext == "xlsx") {
+        t <- read.xlsx(file.path(dir, file), detectDates = TRUE) %>% as.data.table
+      }
+      convert.columns.to.char(t, c("LRSN", "LRSNum"))
     } # end county
    
     dlist[[tname]] <- t

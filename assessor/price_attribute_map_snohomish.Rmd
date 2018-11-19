@@ -1,0 +1,67 @@
+---
+title: "Mapping Attributes: Housing Type and Sales"
+output: html_notebook
+---
+
+
+```{r}
+wrk.dir <- "C:/Users/CLam/Desktop/data-science/assessor"
+curr.dir <- getwd()
+setwd(wrk.dir)
+
+source("price_functions.R")
+
+# assemble all tables into list
+dlist <- read.assessor.files("Snohomish", "2018", "dwnld_2018_02_07/data_formatted")
+# tidy data
+
+```
+
+#### General Notes
+
+* https://snohomishcountywa.gov/3183/FTP-Data-Downloads
+
+#### Tables::Columns
+
+* Master 
+    + PIN, LRSNum, PropClas
+    + PropClas description not found
+* Land  
+    + LRSN, NumDwlg
+* Improvement
+    + LRSNum, PIN, ImprType, UseCode, UseDesc
+* Entire County Sales Since 2000_2018.10.24.xlsx (aka Entire)
+    + LRSN, Parcel_Id, Sale_Date, Prop_Class, Sale_Price, Excise_Nbr
+    
+```{r}
+# preview all columns in all tables
+print.table.structure(dlist)
+```
+
+```{r}
+# Analyze primary occupancy descriptions
+alldesc <- unique(dlist$SnohomishCo_Improvement_Records_2016AV$UseDesc)
+dweldesc <- sort(alldesc[str_which(alldesc, "^[S|s]ingle|[A|a]partment|[A|a]pt|plex|[T|t]ownhouse|[C|c]ondo|MH\\sP|[M|m]ulti-|Manufactured\\sHome")])
+gqdesc <- sort(alldesc[str_which(alldesc, "[M|m]ultiple|[N|n]ursing|[E|e]lderly")])
+
+print(alldesc)
+print(dweldesc)
+print(gqdesc)
+```
+
+
+```{r}
+assemble.housing.price.dataset <- function() {
+  sales <- dlist$Entire[, .(Excise_Nbr, LRSN, Parcel_Id, Sale_Date, Sale_Price, Prop_Class)]
+  impr <- dlist$SnohomishCo_Improvement_Records_2016AV[, .(LRSN, ImprType, UseCode, UseDesc)]
+  land <- dlist$SnohomishCo_Land_Records_2016AV[, .(LRSN, NumDwlg)]
+  # master <- dlist$SnohomishCo_Master_Records_2016AV[, .(PIN, LRSN, PropClas)]
+  
+  sales[impr, on = c("LRSN"), `:=` (ImprType = i.ImprType, UseCode = i.UseCode, UseDesc = i.UseDesc)]
+  sales[land, on = c("LRSN"), NumDwlg := i.NumDwlg]
+  t <- sales[UseDesc %in% dweldesc, ][is.na(NumDwlg), NumDwlg := 0]
+  # impr[ImprType == "OTHER", .(UseCode, UseDesc), by = .(UseCode, UseDesc)]
+  
+}
+
+```
