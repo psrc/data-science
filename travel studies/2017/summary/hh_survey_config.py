@@ -55,3 +55,5 @@ compare_trip=  ['Destination purpose', 'dest_purpose_simple', 'Primary Mode', 'A
                 'Transit trip: Travel mode to transit', 'Auto trip, non-taxi: Park location at end of trip',
                 'Mode Simple'
                 ]
+
+trip_means = ['trip_path_distance']
