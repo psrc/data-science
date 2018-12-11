@@ -16,9 +16,10 @@ mode_lookup_f = 'C:/travel-studies/2017/summary/transit_simple.xlsx'
 purpose_lookup_f = 'C:/travel-studies/2017/summary/destination_simple.xlsx'
 output_file_loc = 'C:/travel-studies/2017/summary/output'
 
-analysis_variable = 'Gender'
-analysis_variable_name = 'gender'
-compare_person =  ['Number of vehicles', 'HH belongs to carshare program', 
+analysis_variable = 'Household income 2016: Broad categories, all respondents'
+analysis_variable_name = 'income'
+compare_person = []
+compare_person =  ['Participant number of trips', 'Number of vehicles', 'HH belongs to carshare program', 
                       'Off-street parking spaces at residence',
                       'How important when chose current home: Being within a 30-minute commute to work',
                       'How important when chose current home: Affordability',
@@ -47,13 +48,23 @@ compare_person =  ['Number of vehicles', 'HH belongs to carshare program',
                       'Age 18+, proxy <> 3:Autonomous car concern: Equipment and safety',
                       'Age 18+, proxy <> 3:Autonomous car concern: Legal liability',
                       'Age 18+, proxy <> 3:Autonomous car concern: System and security',
-                      'Age 18+, proxy <> 3:Autonomous car concern: Reaction to driving environment', 'Participant number of trips']
+                      'Age 18+, proxy <> 3:Autonomous car concern: Reaction to driving environment', 'Participant number of trips',
+                      'Age 18+, proxy <> 3, transit_freq < 5 days/wk: Use more transit: Safer ways to get to stops',
+                      'Age 18+, proxy <> 3, transit_freq < 5 days/wk: Use more transit: Increased frequency',
+                      'Age 18+, proxy <> 3, transit_freq < 5 days/wk: Use more transit: Increased reliability',
+                      'Age 18+, proxy <> 3, bike_freq < 5 days/wk: Use more bike: Shared use path or protected bike lane',
+                      'Age 18+, proxy <> 3, bike_freq < 5 days/wk: Use more bike: Neighborhood greenway',
+                      'Age 18+, proxy <> 3, bike_freq < 5 days/wk: Use more bike: Bike lane',
+                      'Age 18+, proxy <> 3, bike_freq < 5 days/wk: Use more bike: Shared roadway lane',
+                      'Age 18+, proxy <> 3, bike_freq < 5 days/wk: Use more bike: End of trip ammenities']
 
 compare_trip=  ['Destination purpose', 'dest_purpose_simple', 'Primary Mode', 'Auto trip, non-taxi: Park cost at end of trip', 
                 'Used toll on trip: toll fare','Approximate taxi trip fare',
                 'travelers_hh', 'travelers_nonhh', 'travelers_total', 'driver', 'Transit trip: Travel mode from transit',
                 'Transit trip: Travel mode to transit', 'Auto trip, non-taxi: Park location at end of trip',
-                'Mode Simple'
+                'Mode Simple', 'Main Mode'
                 ]
 
 trip_means = ['trip_path_distance']
+
+z = 1.96
