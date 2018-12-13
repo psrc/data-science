@@ -71,9 +71,21 @@ for current_year in analysis_years:
             working_data = working_data[working_data.own_code == '0']
         
             print 'Cleaning up columns and merging annual data by the area fips'
-            keep_columns = ['area_fips','month3_emplvl','avg_wkly_wage']
+            keep_columns = ['area_fips','month1_emplvl','month2_emplvl','month3_emplvl','avg_wkly_wage']
             working_data = working_data.loc[:,keep_columns]
-            final_columns = ['area_fips','covered_jobs','weekly_wage']
+            
+            if current_quarter == 1:
+                final_columns = ['area_fips','jobs_01','jobs_02','jobs_03','weekly_wage']
+            
+            elif current_quarter == 2:
+                final_columns = ['area_fips','jobs_04','jobs_05','jobs_06','weekly_wage']
+
+            elif current_quarter == 3:
+                final_columns = ['area_fips','jobs_07','jobs_08','jobs_09','weekly_wage']
+
+            else:
+                final_columns = ['area_fips','jobs_10','jobs_11','jobs_12','weekly_wage']
+            
             working_data.columns = final_columns
 
             print 'Converting dataframe from Columns to rows'
@@ -97,11 +109,22 @@ final_data['area_fips'] = final_data['area_fips'].apply(str)
 final_data['year'] = final_data['year'].apply(str)
 final_data['quarter'] = final_data['quarter'].apply(str)
 final_data = pd.merge(final_data, fips_codes, on='area_fips',suffixes=('_x','_y'),how='left')
-final_data['record_id'] = final_data['area_fips']+'_'+final_data['quarter']+'_'+final_data['year']
-final_columns = ['record_id','category','value','area_fips','quarter','year','area_name']
+
+print 'Adding a Date Column to the dataframe for use in chart making'
+final_data[['attribute', 'month']] = final_data['category'].str.split('_', expand=True)
+final_data.loc[(final_data['month'] == 'wage' ) & (final_data['quarter'] == 'q1' ), 'month'] = '03'  
+final_data.loc[(final_data['month'] == 'wage' ) & (final_data['quarter'] == 'q2' ), 'month'] = '06'  
+final_data.loc[(final_data['month'] == 'wage' ) & (final_data['quarter'] == 'q3' ), 'month'] = '09'  
+final_data.loc[(final_data['month'] == 'wage' ) & (final_data['quarter'] == 'q4' ), 'month'] = '12'
+final_data.loc[(final_data['attribute'] == 'weekly' ), 'attribute'] = 'wages'  
+final_data['date'] = final_data['month'] + '/01/' + final_data['year']
+
+print 'Cleaning up columns before importing to the central database'
+final_data['record_id'] = final_data['area_fips']+'_'+final_data['attribute']+'_'+final_data['quarter']+'_'+final_data['year']
+final_columns = ['record_id','attribute','value','area_fips','quarter','year','area_name','date']
 final_data = final_data.loc[:,final_columns]
 
-print 'Getting a lsit of the tables in Elmer (the Central Database)'
+print 'Getting a list of the tables in Elmer (the Central Database)'
 qcew_tablename = 'qcew_quarterly_msa_employment'
 
 table_names = []
@@ -118,14 +141,14 @@ if table_exists == True:
     sql_conn.commit()
     
 print 'Creating a new table named ' + qcew_tablename + ' in Elmer to hold the updated MSA employment data'
-sql_statement = 'create table '+qcew_tablename+'(record_id varchar(50), category varchar(50), value int, area_fips varchar(50), quarter varchar(2), year varchar(4), area_name varchar(100))'
+sql_statement = 'create table '+qcew_tablename+'(record_id varchar(25), attribute varchar(10), value int, area_fips varchar(10), quarter varchar(2), year varchar(4), area_name varchar(75), date varchar(10))'
 cursor.execute(sql_statement)
 sql_conn.commit()
 
 print 'Add data to ' + qcew_tablename + ' in Elmer'
 for index,row in final_data.iterrows():
-    sql_state = 'INSERT INTO ' + qcew_tablename + '([record_id],[category],[value],[area_fips],[quarter],[year],[area_name]) values (?,?,?,?,?,?,?)'
-    cursor.execute(sql_state, row['record_id'], row['category'], row['value'], row['area_fips'], row['quarter'], row['year'], row['area_name']) 
+    sql_state = 'INSERT INTO ' + qcew_tablename + '([record_id],[attribute],[value],[area_fips],[quarter],[year],[area_name],[date]) values (?,?,?,?,?,?,?,?)'
+    cursor.execute(sql_state, row['record_id'], row['attribute'], row['value'], row['area_fips'], row['quarter'], row['year'], row['area_name'], row['date']) 
     sql_conn.commit()
     
 print 'Closing the central database'
