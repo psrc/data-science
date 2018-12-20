@@ -620,6 +620,14 @@ GO
 		GO
 
 		INSERT INTO trip_error_flags (hhid, personid, tripnum, error_flag)
+			SELECT trip.hhid, trip.personid, trip.tripnum, 'speed unreasonably high' as error_flag
+				FROM trip 									
+				WHERE 	mode_1 = 1 	AND speed_mph > 20
+					OR 	mode_1 = 2 	AND speed_mph > 40
+					OR 	(mode_1 between 3 and 52 AND mode_1 <> 31) AND speed_mph > 85
+					OR speed_mph > 600;
+
+		INSERT INTO trip_error_flags (hhid, personid, tripnum, error_flag)
 			SELECT hhid, personid, tripnum, 'non-home trip purpose, destination home' as error_flag
 				FROM trip
 				WHERE dest_purpose <> 1 AND dest_is_home = 1;
