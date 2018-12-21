@@ -1,7 +1,7 @@
 /*	Load and clean raw hh survey data via rules -- a.k.a. "Rulesy"
 	Export meant to feed Angela's interactive review tool
 
-	Required custom regex functions coded here as RgxMatch, RgxExtract, RgxReplace
+	Required custom regex functions coded here as RgxFind, RgxExtract, RgxReplace
 	--see https://www.codeproject.com/Articles/19502/A-T-SQL-Regular-Expression-Library-for-SQL-Server
 
 */
@@ -529,58 +529,44 @@ GO
 
 		ALTER TABLE trip --additional destination address fields
 			ADD geom GEOMETRY NULL,
-				dest_county	varchar(5) NULL,
-				dest_city	varchar(5) NULL,
+				recid int identity(1,1) NOT NULL PRIMARY KEY,
+				dest_county	varchar(3) NULL,
+				dest_city	varchar(25) NULL,
 				dest_zip	varchar(5) NULL,
-				dest_is_home bit NULL
-				, 
-				dest_is_work bit NULL;
+				dest_is_home bit NULL, 
+				dest_is_work bit NULL,
+				last_trip_per_person bit NULL;
 		GO
-
-		ALTER TABLE trip --clustered primary key, necessary for a spatial table
-			ADD CONSTRAINT pk_trip PRIMARY KEY (hhid, personid, tripnum);
+		CREATE INDEX hhperson_idx ON trip (hhid ASC, personid ASC);
+		CREATE INDEX tripnum_idx ON trip (tripnum ASC);
+		UPDATE trip	SET geom = geometry::STPointFromText('POINT(' + CAST(dest_lat AS VARCHAR(20)) + ' ' + CAST(dest_lng AS VARCHAR(20)) + ')', 4326);
 		GO
-
-		UPDATE trip
-			SET geom = geometry::STPointFromText('POINT(' + CAST(dest_lat AS VARCHAR(20)) + ' ' + CAST(dest_lng AS VARCHAR(20)) + ')', 4326)
-		GO
-
 		CREATE SPATIAL INDEX geom_idx
 			ON trip(geom)
 			USING GEOMETRY_AUTO_GRID
 			WITH (BOUNDING_BOX= (xmin=-20, ymin=-157.858, xmax=57.803, ymax=124.343));
 		GO	
-	/*	Substring regex selection not supported in current UDF functions; would make parsing city or street fields way easier.
-	*/
-		UPDATE trip --parses zipcode
-			SET dest_zip = substring(dbo.RgxExtract(dest_address, 'WA (\d{5}), USA', 0),4,5);
+
+		--address parsing
+		UPDATE trip	SET dest_zip 	= SUBSTRING(dbo.RgxExtract(dest_address, 'WA (\d{5}), USA', 0),4,5);
+		UPDATE trip	SET dest_city 	= LTRIM(RTRIM(SUBSTRING(dbo.RgxExtract(dest_address, '[A-Za-z ]+, WA ', 0),0,PATINDEX('%,%',dbo.RgxExtract(dest_address, '[A-Za-z ]+, WA ', 0)))));
+		UPDATE trip SET dest_county = zipwgs.county FROM trip JOIN dbo.zipcode_wgs AS zipwgs ON trip.dest_zip=zipwgs.zipcode;
 		GO
 
-	/*	UPDATE trip --parses city
-			SET dest_zip = substring(dbo.RgxExtract(dest_address, 'WA (\d{5}), USA', 0),4,5);
-		GO
-
-		UPDATE trip --links zip to county
-			SET dest_county = zipwgs.county
-			FROM trip join join dbo.zipcode_wgs as zipwgs ON trip.dest_zip=zipwgs.zipcode;
-		GO
-
-	 These spatial queries aren't working yet; need to execute/test everything from this point.
-
-		UPDATE trip --fill missing zipcode
+	/*	UPDATE trip --fill missing zipcode THIS ISN'T UPDATING ANY FIELDS--DESPITE BEING THE SAME EPSG IT ISN'T EVALUATING RIGHT YET.
 			SET trip.dest_zip = zipwgs.zipcode
 			FROM trip join dbo.zipcode_wgs as zipwgs ON [trip].[geom].STIntersects([zipwgs].[geom])=1
 			WHERE trip.dest_zip IS NULL;
 
-		UPDATE trip --fill missing city
-			SET trip.dest_county = zipwgs.zipcode
-			FROM trip join dbo.zipcode_wgs as zipwgs ON [trip].[geom].STIntersects([zipwgs].[geom])=1
-			WHERE trip.dest_zip IS NULL;
+		UPDATE trip --fill missing city --NOT SELECTED YET
+			SET trip.dest_city = [ENTER CITY GEOGRAPHY HERE].City
+			FROM trip join [ENTER CITY GEOGRAPHY HERE] ON [trip].[geom].STIntersects([ENTER CITY GEOGRAPHY HERE].[geom])=1
+			WHERE trip.dest_city IS NULL;
 
-		UPDATE trip --fill missing county
-			SET trip.dest_county = zipwgs.zipcode
+		UPDATE trip --fill missing county--NOT SELECTED YET
+			SET trip.dest_county = zipwgs.county
 			FROM trip join dbo.zipcode_wgs as zipwgs ON [trip].[geom].STIntersects([zipwgs].[geom])=1
-			WHERE trip.dest_zip IS NULL;
+			WHERE trip.dest_county IS NULL;
 
 	*** Create geographic check where assigned zip/county doesn't match the x,y.		
 
@@ -589,7 +575,7 @@ GO
 	--CreateStandardize entry for home
 		UPDATE trip
 			SET dest_is_home = 1
-			WHERE dest_name = 'home' 
+			WHERE dest_name = 'HOME' 
     			OR(
 					(dbo.RgxFind([dest_name],' home',1) = 1 
         			OR dbo.RgxFind([dest_name],'^h[om]?$',1) = 1) 
@@ -597,9 +583,16 @@ GO
 				)
 				OR(dest_purpose = 1 AND dest_name IS NULL);
 
+		UPDATE trip
+			SET dest_is_work = 1
+			WHERE dest_name = 'WORK' 
+    			OR((dbo.RgxFind([dest_name],' work',1) = 1 
+        			OR dbo.RgxFind([dest_name],'^w[or ]?$',1) = 1))
+				OR(dest_purpose = 10 AND dest_name IS NULL);
+
 	--Change 'Other' trip purpose when purpose is provided
-		UPDATE trip 	SET dest_purpose = 1	WHERE dest_purpose = 97 AND dest_name = 'HOME';
-		UPDATE trip 	SET dest_purpose = 10	WHERE dest_purpose = 97 AND dest_name = 'WORK';
+		UPDATE trip 	SET dest_purpose = 1	WHERE dest_purpose = 97 AND dest_is_home = 1;
+		UPDATE trip 	SET dest_purpose = 10	WHERE dest_purpose = 97 AND dest_is_work = 1;
 		UPDATE trip		SET dest_purpose = 33	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(bank|gas|post ?office)',1) = 1;		
 		UPDATE trip		SET dest_purpose = 34	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(doctor|dentist|hospital)',1) = 1;	
 		UPDATE trip		SET dest_purpose = 50	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(coffee|cafe|starbucks|lunch)',1) = 1;		
@@ -666,6 +659,8 @@ GO
 			WHERE trip.dest_purpose <> 1 and trip.dest_is_home = 1
 				AND trip.tripnum - 1 = prev_trip.tripnum AND trip.dest_purpose=prev_trip.dest_purpose;
 
+	/*	-- This section should be reconsidered in light of trip-chaining.  Either prep for Brice's script or make corrections to multi-record trips in Rulesy.
+
 		UPDATE t1 --marks subsequent correction
 			SET t1.rulesy_fixed ='yes'
 			FROM trip_error_flags as t1 join trip on t1.hhid=trip.hhid AND t1.personid=trip.personid AND t1.tripnum=trip.tripnum
@@ -705,8 +700,9 @@ GO
 				AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 60
 				AND (trip.mode_1 = next_trip.mode_1 OR trip.transit_line_1 = next_trip.transit_line_1)
 				AND (next_trip.dest_purpose = 1 OR next_trip.dest_is_home = 1);
+	*/			
 GO
-	--b. Drop-off and pick-up trips coded incorrectly as school trips
+	--b. Drop-off and pick-up trips coded incorrectly as school trips (or other codes)
 		UPDATE t1 --marks subsequent correction
 			SET t1.rulesy_fixed ='yes'
 			FROM trip_error_flags as t1 
@@ -718,13 +714,24 @@ GO
 				AND trip.travelers_total <> next_trip.travelers_total
 				AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 41;
 
-		UPDATE trip --changes code to pickup/dropoff when passenger number changes and duration is under 41 minutes
+		UPDATE trip --changes purpose code from school to pickup/dropoff when passenger number changes and duration is under 41 minutes
 			SET trip.dest_purpose = 9
 			FROM trip 
 				JOIN person ON trip.hhid=person.hhid AND trip.personid=person.personid 
 				JOIN trip as next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid
 			WHERE trip.dest_purpose = 6
 				AND trip.tripnum + 1 = next_trip.tripnum
+				AND trip.travelers_total <> next_trip.travelers_total
+				AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 41;
+		
+		UPDATE trip --changes code from everything else to pickup/dropoff when passenger number changes, duration is under 41 minutes, and pickup/dropoff mentioned in dest_name
+			SET trip.dest_purpose = 9
+			FROM trip 
+				JOIN person ON trip.hhid=person.hhid AND trip.personid=person.personid 
+				JOIN trip as next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid							
+			WHERE trip.tripnum + 1 = next_trip.tripnum
+				AND dbo.RgxFind([trip].[dest_name],'(drop|pick)',1) = 1
+				AND trip.dest_purpose <> 9
 				AND trip.travelers_total <> next_trip.travelers_total
 				AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 41;
 
@@ -740,7 +747,7 @@ GO
 				AND dbo.RgxFind(trip.dest_name,'(school|care)',1) = 1
 				AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) Between 40 and 240;	
 
-		UPDATE trip --changes code to 'family activity' when passenger number changes and duration is under 20 minutes
+		UPDATE trip --changes code to 'family activity' when passenger number changes and duration is from 40mins to 4hrs
 			SET trip.dest_purpose = 56
 			FROM trip 
 				JOIN person ON trip.hhid=person.hhid AND trip.personid=person.personid 
