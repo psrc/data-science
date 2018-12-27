@@ -14,6 +14,8 @@ import pyodbc
 import numpy as np
 import os 
 
+COUNTY = 'PIERCE'
+COUNTY_CODE = '53'
    
 
 def read_data(DATA_PATH, COUNTY, COUNTY_CODE, JURI):
@@ -119,13 +121,26 @@ cursor = sql_conn.cursor()
 
 ## 2. prepare data
 ## get the data and prepare the data for SQL read
-KITSAP_JURIS = ['BREMERTON', 'PORTORCHARD', 'POULSBO', 'UNINCORPORATED']
+if COUNTY is 'Kitsap':
+    JURIS_list = ['BREMERTON', 'PORTORCHARD', 'POULSBO', 'UNINCORPORATED']
+if COUNTY is 'PIERCE':
+    #JURIS_list = ['BUCKLEY', 'CARBONADO', 'DUPONT', 'EATONVILLE', 'EDGEWOOD', 'FIFE', 'FIRCREST', 'GIGHARBOR', 'ORTING', 'PUYALLUP', 'STEILACOOM', 'SUMNER', 'TACOMA', 'UNINCORPORATED', 'UNIVERSITYPLACE', 'WILKESON']
+    JURIS_list= ['UNINCORPORATED', 'UNIVERSITYPLACE', 'WILKESON']
+if COUNTY is 'KING':
+    JURIS_list = ['']
+if COUNTY is 'SNOHOMISH':
+    JURIS_list = []
+
+
+
 #JURI = 'POULSBO'
-for JURI in KITSAP_JURIS:
-    COUNTY = 'Kitsap'
-    COUNTY_CODE = '35'
+for JURI in JURIS_list:
+    print (JURI)
     DATA_PATH = r'J:\Projects\Permits\17Permit\database\working'
-    my_tablename = JURI + '17'  
+    if JURI == 'UNINCORPORATED':
+        my_tablename = JURI + COUNTY + '17' 
+    else:
+        my_tablename = JURI + '17'  
     
     ## set up the SQL data table structure (the data types would change from table to table)
     sql_statement1 = 'create table ' + my_tablename 
