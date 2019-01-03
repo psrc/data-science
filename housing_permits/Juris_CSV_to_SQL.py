@@ -14,8 +14,8 @@ import pyodbc
 import numpy as np
 import os 
 
-COUNTY = 'PIERCE'
-COUNTY_CODE = '53'
+COUNTY = 'KING'
+COUNTY_CODE = '33'
    
 
 def read_data(DATA_PATH, COUNTY, COUNTY_CODE, JURI):
@@ -32,6 +32,10 @@ def data_process(my_data, col1):
         my_data['PIN_PARENT'] = np.nan
     if 'COUNTY' not in my_data.columns:
         my_data['COUNTY'] = COUNTY   
+    if 'LOTSIZE' not in my_data.columns:
+        my_data['LOTSIZE'] = np.nan
+    if 'ID' not in my_data.columns:
+        my_data['ID'] = np.nan
     # reorder the csv table columns, so it could line up with the SQL table columns. It is important in the data type specification, apple to apple. 
     my_data = my_data[[u'ID', u'PSRCIDN', u'PERMITNO', u'SORT', u'MULTIREC', u'PIN',
        u'ADDRESS', u'HOUSENO', u'PREFIX', u'STRNAME', u'STRTYPE', u'SUFFIX',
@@ -94,7 +98,7 @@ def create_data_table_in_SQL(sql_statement):
 # insert data into table
 def insert_data_into_SQL(my_data, str_c, my_tablename):
     for index,row in my_data.iterrows():
-        #print (index)
+        print (index)
         #print (row)
         sql_state = 'INSERT INTO ' + my_tablename + '(' + str_c + ')' + 'values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)' 
         cursor.execute(sql_state, row['ID'],row['PSRCIDN'],row['PERMITNO'],row['SORT'],row['MULTIREC'],
@@ -108,30 +112,45 @@ def insert_data_into_SQL(my_data, str_c, my_tablename):
                                   row['CNTY'],row['MULTCNTY'],row['PSRCID'],row['PSRCIDXY'],row['X_COORD'],
                                   row['Y_COORD'],row['RUNTYPE'],row['CHECK_DUPLICATED'], row['PIN_PARENT'],row['COUNTY']) 
         sql_conn.commit()
-        
-       
+
         
         
 ################################ START THE PROCESS #####################################
 
-## 1. SQL Connection to our internal SQL database Elmer
-sql_conn = pyodbc.connect('DRIVER={SQL Server}; SERVER=sql2016\DSADEV;DATABASE=Sandbox;trusted_connection=true')
-cursor = sql_conn.cursor()
 
-
-## 2. prepare data
+## 1. prepare data
 ## get the data and prepare the data for SQL read
 if COUNTY is 'Kitsap':
     JURIS_list = ['BREMERTON', 'PORTORCHARD', 'POULSBO', 'UNINCORPORATED']
+    
 if COUNTY is 'PIERCE':
-    #JURIS_list = ['BUCKLEY', 'CARBONADO', 'DUPONT', 'EATONVILLE', 'EDGEWOOD', 'FIFE', 'FIRCREST', 'GIGHARBOR', 'ORTING', 'PUYALLUP', 'STEILACOOM', 'SUMNER', 'TACOMA', 'UNINCORPORATED', 'UNIVERSITYPLACE', 'WILKESON']
-    JURIS_list= ['UNINCORPORATED', 'UNIVERSITYPLACE', 'WILKESON']
+    JURIS_list = ['BUCKLEY', 'CARBONADO', 'DUPONT', 'EATONVILLE', 'EDGEWOOD', 
+                  'FIFE', 'FIRCREST', 'GIGHARBOR', 'ORTING', 'PUYALLUP', 'STEILACOOM', 
+                  'SUMNER', 'TACOMA', 'UNINCORPORATED', 'UNIVERSITYPLACE', 'WILKESON']
+    
 if COUNTY is 'KING':
-    JURIS_list = ['']
+    #JURIS_list = ['ALGONA', 'BLACKDIAMOND']
+    #JURIS_list = [ 'BELLEVUE', 'BURIEN', 'CARNATION', 'CLYDEHILL', 'COVINGTON',
+    #              'DESMOINES', 'ENUMCLAW', 'FEDERALWAY', 'ISSAQUAH', 'KENMORE', 'KENT', 'KIRKLAND', 
+    #              'LAKEFORESTPARK', 'MAPLEVALLEY', 'MEDINA', 'MERCERISLAND', 'NEWCASTLE', 'NORMANDYPARK',
+    #              'SAMMAMISH', 
+    JURIS_list = ['SEATAC', 'SEATTLE', 'SHORELINE', 'SNOQUALMIE', 'UNINCORPORATED', 
+                  'WOODINVILLE', 'YARROWPOINT']
+    
 if COUNTY is 'SNOHOMISH':
     JURIS_list = []
 
 
+'''
+to get the list of files in a directory:
+from os import listdir 
+path = r'J:\Projects\Permits\17Permit\database\working\KING'
+os.listdie(path) 
+'''
+
+## 2. SQL Connection to our internal SQL database Elmer
+sql_conn = pyodbc.connect('DRIVER={SQL Server}; SERVER=sql2016\DSADEV;DATABASE=Sandbox;trusted_connection=true')
+cursor = sql_conn.cursor()
 
 #JURI = 'POULSBO'
 for JURI in JURIS_list:
@@ -158,7 +177,7 @@ for JURI in JURIS_list:
                  'STRTYPE varchar(255) NULL, ' + \
                  'SUFFIX varchar(255) NULL, ' + \
                  'UNIT_BLD varchar(255) NULL, ' + \
-                 'ZIP INT NULL, ' + \
+                 'ZIP varchar(255) NULL, ' + \
                  'ISSUED datetime NULL, ' + \
                  'FINALED datetime NULL, ' + \
                  'STATUS varchar(255) NULL, ' + \
@@ -170,7 +189,7 @@ for JURI in JURIS_list:
                  'CONDO varchar(255) NULL, ' + \
                  'VALUE varchar(255) NULL, ' + \
                  'ZONING varchar(255) NULL, ' + \
-                 'NOTES varchar(255) NULL, ' + \
+                 'NOTES varchar(8000) NULL, ' + \
                  'NOTES2 varchar(255) NULL, ' + \
                  'NOTES3 varchar(255) NULL, ' + \
                  'NOTES4 varchar(255) NULL, ' + \
