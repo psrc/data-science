@@ -1,0 +1,389 @@
+---
+title: "Employment Trends"
+output:
+  html_document: default
+---
+
+Job growth is an indicator of a vibrant economy. In the Central Puget Sound Region (made up of King, Kitsap, Pierce and Snohomish counties), jobs are forecasted to increase from approximately 2 million today to over 3.2 million by the year 2050. An important part of regional planning is understanding how current growth trends align with future projections as well as how the job growth is distributed amongst the different parts of the region.
+
+The Quarterly Census of Employment and Wages (QCEW) dataset is available for every metropolitan statistical area and county in the country and updates are released quarterly. This dataset includes both monthly estimates of total covered employment as well as average weekly wages by each geography. Covered Employment includes all jobs covered by unemployment insurance and captures roughly 90% of the total jobs in the region.
+
+```{r include = FALSE}
+library(odbc)
+library(DBI)
+library(data.table)
+library(ggplot2)
+library(scales)
+library(knitr)
+library(lubridate)
+library(plotly)
+library(leaflet)
+library(sp)
+library(rgdal)
+library(DT)
+
+# Genral FIPS ID's for standard summaries
+psrc_region <- c('53033','53035', '53053', '53061')
+king_county <- c('53033')
+kitsap_county <- c('53035')
+pierce_county <- c('53053')
+snohomish_county <- c('53061')
+
+# Function to Create a Bar Chart for a specific geograhpy
+create_bar_chart <- function(table, county, xcolumn, ycolumn, fcolumn, ylimit) {
+
+  psrc_colors <- c(
+    "King County  " = "#91268F",
+    "Kitsap County  " = "#F05A28",
+    "Pierce County  " = "#8CC63E",
+    "Snohomish County  " = "#00A7A0")
+
+  # Create a Set of bar charts grouped by year for each area
+  job_chart <- ggplot(table, aes(x = xcolumn, y= ycolumn, fill= fcolumn), show.legend = FALSE) +
+  geom_col()+
+  scale_fill_manual(values=psrc_colors)+
+  scale_y_continuous(labels = comma, name = "Covered Employment",limits = c(0, ylimit))+
+  xlab("Year")+
+  theme_light()+
+  ggtitle(paste0("Monthly Covered Employment: ", county))+
+  theme(legend.position="none")
+
+  job_chart <- ggplotly(job_chart)
+
+}
+
+# Function to create a County Specific Job set
+create_geographic_summary <- function(table, geography, idate, pdate, cdate) {
+  
+  working_table <- table[area_fips %in% geography]
+  job_totals <- working_table[,.(covered_employment=sum(value)),by=.(date)]
+
+  initial_jobs <- job_totals[date %in% idate,covered_employment]
+  previous_jobs <- job_totals[date %in% pdate,covered_employment] 
+  current_jobs <- job_totals[date %in% cdate,covered_employment]
+
+  total_change <- current_jobs - initial_jobs
+  annual_change <- current_jobs - previous_jobs
+  
+  total_percent_change <- (total_change / initial_jobs) * 100
+  annual_percent_change <- (annual_change / previous_jobs) * 100
+
+  # Formatted numbers for text display
+  i <- format(round(as.numeric(initial_jobs), -1), nsmall=0, big.mark=",")
+  p <- format(round(as.numeric(previous_jobs), -1), nsmall=0, big.mark=",")
+  c <- format(round(as.numeric(current_jobs), -1), nsmall=0, big.mark=",")
+
+  tc <- format(round(as.numeric(total_change), -1), nsmall=0, big.mark=",")
+  ac <- format(round(as.numeric(annual_change), -1), nsmall=0, big.mark=",")
+
+  ptc <- format(round(as.numeric(total_percent_change), 1), nsmall=0, big.mark=",")
+  pac <- format(round(as.numeric(annual_percent_change), 1), nsmall=0, big.mark=",")
+  
+  summary_results <- list(i, p, c, tc, ac, ptc, pac, total_change, annual_change)
+
+}
+
+# Table Name from the Central Database
+working_dbtable <- "Craig.qcew_quarterly_msa_employment"
+
+# SQL Database Connection settings
+elmer_connection <- dbConnect(odbc::odbc(),
+  driver = "SQL Server",
+  server = "sql2016\\DSADEV",
+  database = "Sandbox",
+  trusted_connection = "yes"
+  )
+
+# Load the Table from the database and then close the connection
+msa_data <- dbReadTable(elmer_connection,SQL(working_dbtable))
+odbc::dbDisconnect(elmer_connection)
+
+setDT(msa_data)
+
+# convert the date column to info in format 'mm/dd/yyyy'
+msa_data$date <- lubridate::mdy(msa_data$date)
+
+# Figure out dates from the dataset for use in the summary
+initial_date <- min(msa_data$date)
+current_date <- max(msa_data$date)
+previous_date <- as.Date(current_date) %m-% months(12)
+
+initial_year <- year(initial_date)
+previous_year <- year(previous_date)
+current_year <- year(current_date)
+
+first_month <- months(initial_date)
+last_month <- months(current_date)
+
+# Create Region specific datatables for further analysis
+psrc_data <- msa_data[area_fips %in% psrc_region]
+monthly_jobs <- psrc_data[attribute == 'jobs']
+monthly_jobs$area_name <- gsub('Washington','',monthly_jobs$area_name)
+
+```
+
+## Regional Employment Changes
+
+```{r include = FALSE}
+
+# Create Summary Data by geography
+region_results <- create_geographic_summary(monthly_jobs,psrc_region,initial_date,previous_date,current_date)
+
+```
+
+The economy of the Puget Sound region has been growing rapidly over the past five years, driven in large part by strong growth in our technology sectors. This job trend includes monthly employment data from `r toString(first_month)` of `r toString(initial_year)` to `r toString(last_month)` of `r toString(current_year)`. As noted above, these estimates are for total covered jobs within the four county region and include all public and private employment sectors.
+
+In `r toString(first_month)` of `r toString(initial_year)` there were `r toString(region_results[[1]])` jobs in the Central Puget Sound region. By `r toString(last_month)` of `r toString(current_year)` the number of jobs in the region increased to `r toString(region_results[[3]])`, an increase of over `r toString(region_results[[4]])` jobs (a `r toString(region_results[[6]])`% change).
+
+```{r echo = FALSE, warning= FALSE}
+working_table <- monthly_jobs[area_fips %in% psrc_region]
+region_jobs <- working_table[,.(covered_employment=sum(value)),by=.(date)]
+
+regional_job_trend <- ggplot(region_jobs, aes(x=date,y=covered_employment)) +
+  geom_line(color="#F05A28",size=1) +
+  scale_y_continuous(labels = comma, name = "Covered Employment", limits = c(1000000, 3000000))+
+  theme_light()+
+  xlab("Year")+
+  ggtitle("Monthly Covered Employment: PSRC Region")
+
+regional_job_trend <- ggplotly(regional_job_trend)
+
+regional_job_trend
+
+```
+
+In `r toString(last_month)` of `r toString(previous_year)` there were `r toString(region_results[[2]])` jobs in the Central Puget Sound region. By `r toString(last_month)` of `r toString(current_year)` the number of jobs in the region increased to `r toString(region_results[[3]])`, an increase of over `r toString(region_results[[5]])` jobs (a `r toString(region_results[[7]])`% change) in the past 12 months.
+
+
+```{r echo = FALSE, warning= FALSE}
+
+latest_month_jobs <- monthly_jobs[months(date) == last_month]
+annual_jobs <- latest_month_jobs[,.(Region_Jobs=sum(value)),by=.(year)]
+annual_jobs <- annual_jobs[order(year)]
+annual_jobs$Change <- 0
+
+
+for(i in 1:nrow(annual_jobs)) {
+  if (i == 1) {
+    annual_jobs$Change[i] <- '-'
+    } else { annual_jobs$Change[i] <- (annual_jobs$Region_Jobs[i] - annual_jobs$Region_Jobs[i-1])}
+}
+
+annual_jobs$Region_Jobs <- format(round(as.numeric(annual_jobs$Region_Jobs), -1), nsmall=0, big.mark=",")
+annual_jobs$Change <- format(round(as.numeric(annual_jobs$Change), -1), nsmall=0, big.mark=",")
+
+datatable(annual_jobs, colnames = c('Year', 'Regional Employment', 'Annual Change'), caption = 'Table 1: Regional Covered Employment by Year') %>%
+  formatStyle('year',`text-align` = 'center') %>%
+  formatStyle('Region_Jobs',`text-align` = 'center') %>%
+  formatStyle('Change',`text-align` = 'center')
+
+```
+
+## County Employment Changes {.tabset .tabset.fade .tabset-pills}
+
+Jobs have increased all around the region since `r toString(initial_year)` but the level of growth has varied by county. King and Snohomish counties have accounted for a majority of the job growth since the end of the Great Recession but growth has accelerated in Kitsap and Pierce counties over the the past several years.
+
+### King County
+```{r include = FALSE}
+
+# Create Summary Data by geography
+king_results <- create_geographic_summary(monthly_jobs,king_county,initial_date,previous_date,current_date)
+king_share_annual_change <- format(round((king_results[[9]] / region_results[[9]])*100,1), nsmall=0)
+king_share_total_change <- format(round((king_results[[8]] / region_results[[8]])*100,1), nsmall=0)
+
+```
+In `r toString(last_month)` of `r toString(previous_year)` there were `r toString(king_results[[2]])` jobs in King County. By `r toString(last_month)` of `r toString(current_year)` the number of jobs in King County increased to `r toString(king_results[[3]])`, an increase of over `r toString(king_results[[5]])` jobs in the past 12 months. Over the past year, King County accounted for approximately `r toString(king_share_annual_change)`% of the total job growth in the four county region. Since `r toString(initial_year)`, King County has added over `r toString(king_results[[4]])` jobs which accounts for `r toString(king_share_total_change)`% of the total job growth in the four county region.
+
+```{r echo = FALSE}
+king_monthly_jobs <- monthly_jobs[area_fips %in% king_county]
+king_jobs <- create_bar_chart(king_monthly_jobs, "King County", king_monthly_jobs$date, king_monthly_jobs$value, king_monthly_jobs$area_name, 2000000)
+king_jobs
+```
+
+### Kitsap County
+```{r include = FALSE}
+
+# Create Summary Data by geography
+kitsap_results <- create_geographic_summary(monthly_jobs,kitsap_county,initial_date,previous_date,current_date)
+kitsap_share_annual_change <- format(round((kitsap_results[[9]] / region_results[[9]])*100,1), nsmall=0)
+kitsap_share_total_change <- format(round((kitsap_results[[8]] / region_results[[8]])*100,1), nsmall=0)
+
+```
+In `r toString(last_month)` of `r toString(previous_year)` there were `r toString(kitsap_results[[2]])` jobs in Kitsap County. By `r toString(last_month)` of `r toString(current_year)` the number of jobs in Kitsap County increased to `r toString(kitsap_results[[3]])`, an increase of over `r toString(kitsap_results[[5]])` jobs in the past 12 months. Over the past year, Kitsap County accounted for approximately `r toString(kitsap_share_annual_change)`% of the total job growth in the four county region. Since `r toString(initial_year)`, Kitsap County has added over `r toString(kitsap_results[[4]])` jobs which accounts for `r toString(kitsap_share_total_change)`% of the total job growth in the four county region.
+
+```{r echo = FALSE}
+kitsap_monthly_jobs <- monthly_jobs[area_fips %in% kitsap_county]
+kitsap_jobs <- create_bar_chart(kitsap_monthly_jobs, "Kitsap County", kitsap_monthly_jobs$date, kitsap_monthly_jobs$value, kitsap_monthly_jobs$area_name, 250000)
+kitsap_jobs
+```
+
+### Pierce County
+```{r include = FALSE}
+
+# Create Summary Data by geography
+pierce_results <- create_geographic_summary(monthly_jobs,pierce_county,initial_date,previous_date,current_date)
+pierce_share_annual_change <- format(round((pierce_results[[9]] / region_results[[9]])*100,1), nsmall=0)
+pierce_share_total_change <- format(round((pierce_results[[8]] / region_results[[8]])*100,1), nsmall=0)
+
+```
+In `r toString(last_month)` of `r toString(previous_year)` there were `r toString(pierce_results[[2]])` jobs in Pierce County. By `r toString(last_month)` of `r toString(current_year)` the number of jobs in Pierce County increased to `r toString(pierce_results[[3]])`, an increase of over `r toString(pierce_results[[5]])` jobs in the past 12 months. Over the past year, Pierce County accounted for approximately `r toString(pierce_share_annual_change)`% of the total job growth in the four county region. Since `r toString(initial_year)`, Pierce County has added over `r toString(pierce_results[[4]])` jobs which accounts for `r toString(pierce_share_total_change)`% of the total job growth in the four county region.
+
+```{r echo = FALSE}
+pierce_monthly_jobs <- monthly_jobs[area_fips %in% pierce_county]
+pierce_jobs <- create_bar_chart(pierce_monthly_jobs, "Pierce County", pierce_monthly_jobs$date, pierce_monthly_jobs$value, pierce_monthly_jobs$area_name, 500000)
+pierce_jobs
+```
+
+### Snohomish County
+```{r include = FALSE}
+
+# Create Summary Data by geography
+snohomish_results <- create_geographic_summary(monthly_jobs,snohomish_county,initial_date,previous_date,current_date)
+snohomish_share_annual_change <- format(round((snohomish_results[[9]] / region_results[[9]])*100,1), nsmall=0)
+snohomish_share_total_change <- format(round((snohomish_results[[8]] / region_results[[8]])*100,1), nsmall=0)
+
+```
+In `r toString(last_month)` of `r toString(previous_year)` there were `r toString(snohomish_results[[2]])` jobs in Snohomish County. By `r toString(last_month)` of `r toString(current_year)` the number of jobs in Snohomish County increased to `r toString(snohomish_results[[3]])`, an increase of over `r toString(snohomish_results[[5]])` jobs in the past 12 months. Over the past year, Snohomish County accounted for approximately `r toString(snohomish_share_annual_change)`% of the total job growth in the four county region. Since `r toString(initial_year)`, Snohomish County has added over `r toString(snohomish_results[[4]])` jobs which accounts for `r toString(snohomish_share_total_change)`% of the total job growth in the four county region.
+
+```{r echo = FALSE}
+snohomish_monthly_jobs <- monthly_jobs[area_fips %in% snohomish_county]
+snohomish_jobs <- create_bar_chart(snohomish_monthly_jobs, "Snohomish County", snohomish_monthly_jobs$date, snohomish_monthly_jobs$value, snohomish_monthly_jobs$area_name, 500000)
+snohomish_jobs
+```
+
+## Statewide Job Growth {.tabset .tabset-fade .tabset-pills}
+
+### 2017
+
+In 2017, there were a bunch of jobs in the state .......
+
+```{r echo = FALSE}
+
+# Create Region specific datatables for further analysis
+washington_data <- msa_data[area_fips %in% grep("^530", area_fips, value = T) & area_name %in% grep("Washington$", area_name, value = T), ]
+washington_data $area_fips <- gsub('^53','',washington_data $area_fips)
+
+wa_monthly_jobs <- washington_data[attribute == 'jobs']
+
+wa_previous_year <- wa_monthly_jobs[date %in% previous_date]
+
+# Trim down the datatables to only include the FIPS code and Employment Totals
+statewide_jobs <- wa_previous_year[,.(area_fips,value)]
+names(statewide_jobs)[names(statewide_jobs)=="value"] <- "previous_year_jobs"
+total_state_jobs <- sum(statewide_jobs$previous_year_jobs)
+statewide_jobs$state_share <- (statewide_jobs$previous_year_jobs / total_state_jobs)*100
+
+# Washington State County Shapefile
+zone.shape <- readOGR(dsn='D:/coding/employment/inputs',layer='countybackground_wgs84')
+county_jobs <- sp::merge(zone.shape, statewide_jobs, by.x = "COUNTY_FIP", by.y = "area_fips")
+
+# Set bins for use in map based on range or attribute
+rng <- range(county_jobs$state_share)
+max_bin <- max(abs(rng))
+round_to <- 10^floor(log10(max_bin))
+max_bin <- ceiling(max_bin/round_to)*round_to
+breaks <- (sqrt(max_bin)*c(0.1, 0.2,0.4, 0.6, 0.8, 1))^2
+
+bins <- c(0, breaks)
+pal <- colorBin("Blues", domain = county_jobs$state_share, bins = bins)
+
+# Create a label format for the interactive map
+labels <- paste0("<b>","County: ", "</b>",county_jobs$COUNTY_NM,
+                 "<b> <br>","Jobs: ", "</b>", prettyNum(round(county_jobs$previous_year_jobs, -1), big.mark = ","),
+                 "<b> <br>","Share: ", "</b>", prettyNum(round(county_jobs$state_share, 1), big.mark = ","),"%") %>% lapply(htmltools::HTML)
+
+county_map <- leaflet(data = county_jobs) %>% 
+  addTiles() %>%
+  addPolygons(fillColor = pal(county_jobs$state_share),
+              weight = 2,
+              opacity = 1,
+              color = "white",
+              dashArray = "3",
+              fillOpacity = 0.7,
+              highlight = highlightOptions(
+                weight =5,
+                color = "76787A",
+                dashArray ="",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+              label = labels,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px",
+                direction = "auto"))%>%
+  addLegend("bottomright", pal=pal, values = county_jobs$state_share,
+            title = "Share of Jobs",
+            labFormat = labelFormat(suffix = "%"),
+            opacity = 1)
+
+county_map
+
+```
+
+### 2018
+
+In 2018, there were even more jobs in the state .......
+
+```{r echo = FALSE, message= FALSE, warning= FALSE}
+
+# Create Region specific datatables for further analysis
+washington_data <- msa_data[area_fips %in% grep("^530", area_fips, value = T) & area_name %in% grep("Washington$", area_name, value = T), ]
+washington_data $area_fips <- gsub('^53','',washington_data $area_fips)
+
+wa_monthly_jobs <- washington_data[attribute == 'jobs']
+wa_latest_year <- wa_monthly_jobs[date %in% current_date]
+
+# Trim down the datatables to only include the FIPS code and Employment Totals
+statewide_jobs <- wa_latest_year[,.(area_fips,value)]
+names(statewide_jobs)[names(statewide_jobs)=="value"] <- "latest_year_jobs"
+total_state_jobs <- sum(statewide_jobs$latest_year_jobs)
+statewide_jobs$state_share <- (statewide_jobs$latest_year_jobs / total_state_jobs)*100
+
+# Washington State County Shapefile
+zone.shape <- readOGR(dsn='D:/coding/employment/inputs',layer='countybackground_wgs84')
+county_jobs <- sp::merge(zone.shape, statewide_jobs, by.x = "COUNTY_FIP", by.y = "area_fips")
+
+# Set bins for use in map based on range or attribute
+rng <- range(county_jobs$state_share)
+max_bin <- max(abs(rng))
+round_to <- 10^floor(log10(max_bin))
+max_bin <- ceiling(max_bin/round_to)*round_to
+breaks <- (sqrt(max_bin)*c(0.1, 0.2,0.4, 0.6, 0.8, 1))^2
+
+bins <- c(0, breaks)
+pal <- colorBin("Blues", domain = county_jobs$state_share, bins = bins)
+
+# Create a label format for the interactive map
+labels <- paste0("<b>","County: ", "</b>",county_jobs$COUNTY_NM,
+                 "<b> <br>","Jobs: ", "</b>", prettyNum(round(county_jobs$latest_year_jobs, -1), big.mark = ","),
+                 "<b> <br>","Share: ", "</b>", prettyNum(round(county_jobs$state_share, 1), big.mark = ","),"%") %>% lapply(htmltools::HTML)
+
+county_map <- leaflet(data = county_jobs) %>% 
+  addTiles() %>%
+  addPolygons(fillColor = pal(county_jobs$state_share),
+              weight = 2,
+              opacity = 1,
+              color = "white",
+              dashArray = "3",
+              fillOpacity = 0.7,
+              highlight = highlightOptions(
+                weight =5,
+                color = "76787A",
+                dashArray ="",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+              label = labels,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px",
+                direction = "auto"))%>%
+  addLegend("bottomright", pal=pal, values = county_jobs$state_share,
+            title = "Share of Jobs",
+            labFormat = labelFormat(suffix = "%"),
+            opacity = 1)
+
+county_map
+
+```
+
+# National Comparison
