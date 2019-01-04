@@ -14,8 +14,11 @@ import pyodbc
 import numpy as np
 import os 
 
-COUNTY = 'KING'
-COUNTY_CODE = '33'
+
+
+
+COUNTY = 'SNOHOMISH'
+COUNTY_CODE = '61'
    
 
 def read_data(DATA_PATH, COUNTY, COUNTY_CODE, JURI):
@@ -129,23 +132,25 @@ if COUNTY is 'PIERCE':
                   'SUMNER', 'TACOMA', 'UNINCORPORATED', 'UNIVERSITYPLACE', 'WILKESON']
     
 if COUNTY is 'KING':
-    #JURIS_list = ['ALGONA', 'BLACKDIAMOND']
-    #JURIS_list = [ 'BELLEVUE', 'BURIEN', 'CARNATION', 'CLYDEHILL', 'COVINGTON',
-    #              'DESMOINES', 'ENUMCLAW', 'FEDERALWAY', 'ISSAQUAH', 'KENMORE', 'KENT', 'KIRKLAND', 
-    #              'LAKEFORESTPARK', 'MAPLEVALLEY', 'MEDINA', 'MERCERISLAND', 'NEWCASTLE', 'NORMANDYPARK',
-    #              'SAMMAMISH', 
-    JURIS_list = ['SEATAC', 'SEATTLE', 'SHORELINE', 'SNOQUALMIE', 'UNINCORPORATED', 
-                  'WOODINVILLE', 'YARROWPOINT']
+    JURIS_list = ['ALGONA2', 'BELLEVUE', 'BLACKDIAMOND2', 'BURIEN', 'CARNATION', 'CLYDEHILL', 'COVINGTON',
+                  'DESMOINES', 'ENUMCLAW', 'FEDERALWAY', 'ISSAQUAH2', 'KENMORE', 'KENT', 'KIRKLAND', 
+                  'LAKEFORESTPARK', 'MAPLEVALLEY', 'MEDINA', 'MERCERISLAND', 'NEWCASTLE', 'NORMANDYPARK',
+                  'SAMMAMISH', 'SEATAC', 'SEATTLE2', 'SHORELINE', 'SNOQUALMIE', 'UNINCORPORATED', 'WOODINVILLE2', 'YARROWPOINT']
+
     
 if COUNTY is 'SNOHOMISH':
-    JURIS_list = []
+    JURIS_list = ['ARLINGTON', 'BOTHELL1', 'BOTHELL2', 'BRIER', 'DARRINGTON', 'EDMONDs',
+                  'EVERETT', 'GOLDBAR', 'GRANITEFALLS', 'LAKESTEVENS', 'LYNNWOOD', 'MARYSVILLE', 
+                  'MILLCREEK', 'MONROE', 'MOUNTLAKETERRACE', 'MUKILTEO', 'SNOHOMISH', 
+                  'STANWOOD', 'UNINCORPORATED', 'WOODWAY']
 
 
 '''
 to get the list of files in a directory:
 from os import listdir 
-path = r'J:\Projects\Permits\17Permit\database\working\KING'
-os.listdie(path) 
+path = r'J:\Projects\Permits\17Permit\database\working\SNOHOMISH'
+os.listdir(path) 
+
 '''
 
 ## 2. SQL Connection to our internal SQL database Elmer
@@ -189,7 +194,7 @@ for JURI in JURIS_list:
                  'CONDO varchar(255) NULL, ' + \
                  'VALUE varchar(255) NULL, ' + \
                  'ZONING varchar(255) NULL, ' + \
-                 'NOTES varchar(8000) NULL, ' + \
+                 'NOTES nvarchar(500) NULL, ' + \
                  'NOTES2 varchar(255) NULL, ' + \
                  'NOTES3 varchar(255) NULL, ' + \
                  'NOTES4 varchar(255) NULL, ' + \
