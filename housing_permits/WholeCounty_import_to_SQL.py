@@ -5,6 +5,7 @@ Created on Mon Jan 07 15:48:23 2019
 Task: This script is to upload one single county file to SQL. 
 This step was carried out after union all jurisdictions to one county table, 
 and attach geo information (census id and UGA, TAZ ID) to the table
+NOTE: BEFORE RUN THIS FILE, YOU HAVE TO MAKE SURE PIN IS IN INT TYPE. sometimes, it is in wreid object type and with e+9 value. 
 """
 
 import pandas as pd
@@ -13,11 +14,11 @@ import numpy as np
 import os 
 
 
-COUNTY = 'KITSAP'
-COUNTY_CODE = '35'
+COUNTY = 'PIERCE'
+COUNTY_CODE = '53'
 DATA_PATH = r'J:\Projects\Permits\17Permit\database\working'
 my_tablename = COUNTY + '_' + COUNTY_CODE + '_17'
-file_name = COUNTY + '17_census.txt'
+file_name = COUNTY + '17_census.csv'
 
 def read_data(DATA_PATH, COUNTY, file_name):
     my_file = pd.DataFrame.from_csv(os.path.join(DATA_PATH, COUNTY, file_name), sep=',', index_col=None)
@@ -34,7 +35,7 @@ def data_process(my_data):
     if 'TAZ10' not in my_data.columns:
         my_data['TAZ10'] = np.nan
     if 'FAZ10' not in my_data.columns:
-        my_data['FAZ10'] = COUNTY   
+        my_data['FAZ10'] = np.nan   
     if 'TAZ4K' not in my_data.columns:
         my_data['TAZ4K'] = np.nan
     if 'ID' not in my_data.columns:
