@@ -253,48 +253,69 @@ snohomish_jobs
 
 ## Statewide Job Growth {.tabset .tabset-fade .tabset-pills}
 
-### 2017
+```{r include = FALSE}
 
-In 2017, there were a bunch of jobs in the state .......
+# Create Region specific datatables for further analysis
+washington_data <- msa_data[area_fips %in% grep("^530", area_fips, value = T) & area_name %in% grep("Washington$", area_name, value = T), ]
+washington_data $area_fips <- gsub('^53','',washington_data $area_fips)
+
+wa_monthly_jobs <- washington_data[attribute == 'jobs']
+
+# Create a county level datatable of jobs from the previous year
+wa_previous_year <- wa_monthly_jobs[date %in% previous_date]
+wa_previous_year <- wa_previous_year[,.(area_fips,value)]
+total_previous_jobs <- sum(wa_previous_year$value)
+wa_previous_year$share <- (wa_previous_year$value / total_previous_jobs)*100
+setnames(wa_previous_year,"value","previous_jobs")
+setnames(wa_previous_year,"share","previous_share")
+setkey(wa_previous_year,area_fips)
+
+# Create a county level datatable of jobs from the current year
+wa_current_year <- wa_monthly_jobs[date %in% current_date]
+wa_current_year <- wa_current_year[,.(area_fips,value)]
+total_current_jobs <- sum(wa_current_year$value)
+wa_current_year$share <- (wa_current_year$value / total_current_jobs)*100
+setnames(wa_current_year,"value","current_jobs")
+setnames(wa_current_year,"share","current_share")
+setkey(wa_current_year,area_fips)
+
+# Join the previous and current job files before merging with the Shapefile
+statewide_jobs <- merge(wa_previous_year,wa_current_year, all.x=TRUE)
+statewide_jobs$delta <- statewide_jobs$current_jobs - statewide_jobs$previous_jobs
+total_statewide_change <- sum(statewide_jobs$delta)
+statewide_jobs$share <- (statewide_jobs$delta / total_statewide_change)*100
+
+# Now merge the job data with the Washington State County Shapefile
+zone.shape <- readOGR(dsn='D:/coding/employment/inputs',layer='countybackground_wgs84')
+county_jobs <- sp::merge(zone.shape, statewide_jobs, by.x = "COUNTY_FIP", by.y = "area_fips")
+
+```
+### `r toString(previous_year)`
+In `r toString(previous_year)`, there were a `r toString(total_previous_jobs)` jobs in Washington State.
 
 ```{r echo = FALSE}
 
-# Create Region specific datatables for further analysis
-washington_data <- msa_data[area_fips %in% grep("^530", area_fips, value = T) & area_name %in% grep("Washington$", area_name, value = T), ]
-washington_data $area_fips <- gsub('^53','',washington_data $area_fips)
-
-wa_monthly_jobs <- washington_data[attribute == 'jobs']
-
-wa_previous_year <- wa_monthly_jobs[date %in% previous_date]
-
-# Trim down the datatables to only include the FIPS code and Employment Totals
-statewide_jobs <- wa_previous_year[,.(area_fips,value)]
-names(statewide_jobs)[names(statewide_jobs)=="value"] <- "previous_year_jobs"
-total_state_jobs <- sum(statewide_jobs$previous_year_jobs)
-statewide_jobs$state_share <- (statewide_jobs$previous_year_jobs / total_state_jobs)*100
-
-# Washington State County Shapefile
-zone.shape <- readOGR(dsn='D:/coding/employment/inputs',layer='countybackground_wgs84')
-county_jobs <- sp::merge(zone.shape, statewide_jobs, by.x = "COUNTY_FIP", by.y = "area_fips")
+#working_column <- "previous_share"
+#test <- county_jobs[,get(eval(working_column))]
 
 # Set bins for use in map based on range or attribute
-rng <- range(county_jobs$state_share)
+rng <- range(county_jobs$previous_share)
 max_bin <- max(abs(rng))
 round_to <- 10^floor(log10(max_bin))
 max_bin <- ceiling(max_bin/round_to)*round_to
 breaks <- (sqrt(max_bin)*c(0.1, 0.2,0.4, 0.6, 0.8, 1))^2
 
 bins <- c(0, breaks)
-pal <- colorBin("Blues", domain = county_jobs$state_share, bins = bins)
+pal <- colorBin("Blues", domain = county_jobs$previous_share, bins = bins)
 
 # Create a label format for the interactive map
 labels <- paste0("<b>","County: ", "</b>",county_jobs$COUNTY_NM,
-                 "<b> <br>","Jobs: ", "</b>", prettyNum(round(county_jobs$previous_year_jobs, -1), big.mark = ","),
-                 "<b> <br>","Share: ", "</b>", prettyNum(round(county_jobs$state_share, 1), big.mark = ","),"%") %>% lapply(htmltools::HTML)
+                 "<b> <br>","Jobs: ", "</b>", prettyNum(round(county_jobs$previous_jobs, -1), big.mark = ","),
+                 "<b> <br>","Share: ", "</b>", prettyNum(round(county_jobs$previous_share, 1), big.mark = ","),"%") %>% lapply(htmltools::HTML)
 
 county_map <- leaflet(data = county_jobs) %>% 
   addTiles() %>%
-  addPolygons(fillColor = pal(county_jobs$state_share),
+  addPolygons(fillColor = pal(county_jobs$previous_share),
               weight = 2,
               opacity = 1,
               color = "white",
@@ -311,7 +332,7 @@ county_map <- leaflet(data = county_jobs) %>%
                 style = list("font-weight" = "normal", padding = "3px 8px"),
                 textsize = "15px",
                 direction = "auto"))%>%
-  addLegend("bottomright", pal=pal, values = county_jobs$state_share,
+  addLegend("bottomright", pal=pal, values = county_jobs$previous_share,
             title = "Share of Jobs",
             labFormat = labelFormat(suffix = "%"),
             opacity = 1)
@@ -320,47 +341,29 @@ county_map
 
 ```
 
-### 2018
+### `r toString(current_year)`
+In `r toString(current_year)`, there were even more jobs in the state .......
 
-In 2018, there were even more jobs in the state .......
-
-```{r echo = FALSE, message= FALSE, warning= FALSE}
-
-# Create Region specific datatables for further analysis
-washington_data <- msa_data[area_fips %in% grep("^530", area_fips, value = T) & area_name %in% grep("Washington$", area_name, value = T), ]
-washington_data $area_fips <- gsub('^53','',washington_data $area_fips)
-
-wa_monthly_jobs <- washington_data[attribute == 'jobs']
-wa_latest_year <- wa_monthly_jobs[date %in% current_date]
-
-# Trim down the datatables to only include the FIPS code and Employment Totals
-statewide_jobs <- wa_latest_year[,.(area_fips,value)]
-names(statewide_jobs)[names(statewide_jobs)=="value"] <- "latest_year_jobs"
-total_state_jobs <- sum(statewide_jobs$latest_year_jobs)
-statewide_jobs$state_share <- (statewide_jobs$latest_year_jobs / total_state_jobs)*100
-
-# Washington State County Shapefile
-zone.shape <- readOGR(dsn='D:/coding/employment/inputs',layer='countybackground_wgs84')
-county_jobs <- sp::merge(zone.shape, statewide_jobs, by.x = "COUNTY_FIP", by.y = "area_fips")
+```{r echo = FALSE}
 
 # Set bins for use in map based on range or attribute
-rng <- range(county_jobs$state_share)
+rng <- range(county_jobs$current_share)
 max_bin <- max(abs(rng))
 round_to <- 10^floor(log10(max_bin))
 max_bin <- ceiling(max_bin/round_to)*round_to
 breaks <- (sqrt(max_bin)*c(0.1, 0.2,0.4, 0.6, 0.8, 1))^2
 
 bins <- c(0, breaks)
-pal <- colorBin("Blues", domain = county_jobs$state_share, bins = bins)
+pal <- colorBin("Blues", domain = county_jobs$current_share, bins = bins)
 
 # Create a label format for the interactive map
 labels <- paste0("<b>","County: ", "</b>",county_jobs$COUNTY_NM,
-                 "<b> <br>","Jobs: ", "</b>", prettyNum(round(county_jobs$latest_year_jobs, -1), big.mark = ","),
-                 "<b> <br>","Share: ", "</b>", prettyNum(round(county_jobs$state_share, 1), big.mark = ","),"%") %>% lapply(htmltools::HTML)
+                 "<b> <br>","Jobs: ", "</b>", prettyNum(round(county_jobs$current_jobs, -1), big.mark = ","),
+                 "<b> <br>","Share: ", "</b>", prettyNum(round(county_jobs$current_share, 1), big.mark = ","),"%") %>% lapply(htmltools::HTML)
 
 county_map <- leaflet(data = county_jobs) %>% 
   addTiles() %>%
-  addPolygons(fillColor = pal(county_jobs$state_share),
+  addPolygons(fillColor = pal(county_jobs$current_share),
               weight = 2,
               opacity = 1,
               color = "white",
@@ -377,7 +380,7 @@ county_map <- leaflet(data = county_jobs) %>%
                 style = list("font-weight" = "normal", padding = "3px 8px"),
                 textsize = "15px",
                 direction = "auto"))%>%
-  addLegend("bottomright", pal=pal, values = county_jobs$state_share,
+  addLegend("bottomright", pal=pal, values = county_jobs$current_share,
             title = "Share of Jobs",
             labFormat = labelFormat(suffix = "%"),
             opacity = 1)
@@ -385,5 +388,51 @@ county_map <- leaflet(data = county_jobs) %>%
 county_map
 
 ```
+### `r toString(previous_year)` to `r toString(current_year)`
+In `r toString(current_year)`, there were even more jobs in the state .......
 
+```{r echo = FALSE}
+
+# Set bins for use in map based on range or attribute
+rng <- range(county_jobs$current_share)
+max_bin <- max(abs(rng))
+round_to <- 10^floor(log10(max_bin))
+max_bin <- ceiling(max_bin/round_to)*round_to
+breaks <- (sqrt(max_bin)*c(0.1, 0.2,0.4, 0.6, 0.8, 1))^2
+
+bins <- c(0, breaks)
+pal <- colorBin("Blues", domain = county_jobs$current_share, bins = bins)
+
+# Create a label format for the interactive map
+labels <- paste0("<b>","County: ", "</b>",county_jobs$COUNTY_NM,
+                 "<b> <br>","Jobs: ", "</b>", prettyNum(round(county_jobs$current_jobs, -1), big.mark = ","),
+                 "<b> <br>","Share: ", "</b>", prettyNum(round(county_jobs$current_share, 1), big.mark = ","),"%") %>% lapply(htmltools::HTML)
+
+county_map <- leaflet(data = county_jobs) %>% 
+  addTiles() %>%
+  addPolygons(fillColor = pal(county_jobs$current_share),
+              weight = 2,
+              opacity = 1,
+              color = "white",
+              dashArray = "3",
+              fillOpacity = 0.7,
+              highlight = highlightOptions(
+                weight =5,
+                color = "76787A",
+                dashArray ="",
+                fillOpacity = 0.7,
+                bringToFront = TRUE),
+              label = labels,
+              labelOptions = labelOptions(
+                style = list("font-weight" = "normal", padding = "3px 8px"),
+                textsize = "15px",
+                direction = "auto"))%>%
+  addLegend("bottomright", pal=pal, values = county_jobs$current_share,
+            title = "Share of Jobs",
+            labFormat = labelFormat(suffix = "%"),
+            opacity = 1)
+
+county_map
+
+```
 # National Comparison
