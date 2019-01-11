@@ -13,7 +13,15 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
--- STEP 1. Load data from fixed format .csv files.  
+CREATE TABLE transitmodes (mode_id int PRIMARY KEY NOT NULL);
+GO
+	INSERT INTO transitmodes(mode_id) VALUES (23),(24),(26),(27),(28),(31),(32),(33),(34),(36),(37),(41),(42),(47),(52);
+
+CREATE TABLE automodes (mode_id int PRIMARY KEY NOT NULL);
+GO
+	INSERT INTO automodes(mode_id) values (3),(4),(5),(6),(7),(8),(9),(10),(11),(12),(16),(17),(18),(21),(22),(23),(24),(26),(27),(28),(31),(32),(33),(34),(36),(37);
+
+-- STEP 1. 	Load data from fixed format .csv files.  
 	--	Due to field import difficulties, the trip table is imported in two steps--a loosely typed table, then queried into a tightly typed table.
 
 		CREATE TABLE household (
@@ -700,7 +708,39 @@ GO
 		UPDATE trip		SET dest_purpose = 51	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'park',1) = 1 AND dbo.RgxFind(dest_name,'(parking|ride)',1) = 0;
 		UPDATE trip		SET dest_purpose = 54	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'church',1) = 1; 
 GO
--- Step 3. Flag inconsistencies
+
+-- Step 3.	Trip access/egress
+
+	-- Revise when access and/or egress is reported as a mode in a transit trip
+		UPDATE trip SET mode_acc = mode_1,
+						mode_1 = mode_2,
+						mode_2 = mode_3,
+						mode_3 = mode_4,			
+			WHERE 	mode_1 NOT IN(SELECT mode_id FROM transitmodes) AND mode_2 IN(SELECT mode_id FROM transitmodes);
+
+		UPDATE trip SET mode_egr = mode_4, mode_4 = NULL  
+			WHERE mode_4 IS NOT NULL AND mode_4 NOT IN(SELECT mode_id FROM transitmodes)
+			AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes) OR mode_3 IN(SELECT mode_id FROM transitmodes));
+
+		UPDATE trip SET mode_egr = mode_3, mode_3 = NULL
+		  WHERE mode_3 IS NOT NULL AND mode_4 IS NULL AND mode_3 NOT IN(SELECT mode_id FROM transitmodes) 
+			 AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes));
+
+		UPDATE trip SET mode_egr = mode_2, mode_2 = NULL
+			WHERE mode_2 IS NOT NULL AND mode_3 IS NULL AND mode_2 NOT IN(SELECT mode_id FROM transitmodes) 
+			AND mode_1 IN(SELECT mode_id FROM transitmodes);
+
+	-- Revise when walk/bike access and/or egress is reported as a mode in a non-transit vehicular trip
+		UPDATE trip SET mode_acc = mode_1,
+						mode_1 = mode_2,
+						mode_2 = mode_3,
+						mode_3 = mode_4,			
+			WHERE 	mode_1 IN(1,2) AND mode_2 > 2;
+
+/* Here edit walk/bike egress for non-transit vehicular trip
+*/
+
+-- Step 4a. 	Flag inconsistencies
 
 		CREATE TABLE trip_error_flags(
 			hhid int not NULL,
@@ -715,9 +755,8 @@ GO
 	-- Data Integrity Checks
 
 		INSERT INTO trip_error_flags (hhid, personid, tripnum, error_flag)
-			SELECT trip.hhid, trip.personid, trip.tripnum, 'non-consecutive trip numbering' as error_flag
-				FROM trip AS t1 
-					JOIN trip AS t2 ON t1.personid=t2.personid
+			SELECT t1.hhid, t1.personid, t1.tripnum, 'non-consecutive trip numbering' as error_flag
+				FROM trip AS t1 JOIN trip AS t2 ON t1.personid=t2.personid
 				WHERE ((t1.tripid - t2.tripid) / 
 					(CASE WHEN datediff(minute, t1.depart_time_timestamp, t2.arrival_time_timestamp) = 0 THEN 1 
 					ELSE datediff(minute, t1.depart_time_timestamp, t2.arrival_time_timestamp) END)) < 0;
@@ -725,6 +764,13 @@ GO
 
 
 	-- Logic Checks
+
+
+		INSERT INTO trip_error_flags (hhid, personid, tripnum, error_flag)
+			SELECT trip.hhid, trip.personid, trip.tripnum, 'underage driver' as error_flag
+			FROM hhts_agecodes AS age JOIN person AS p ON age.agecode = p.age
+				JOIN trip AS t1 ON p.personid = t1.personid
+			WHERE t1.driver = 1 AND p.age BETWEEN 1 AND 3
 
 		INSERT INTO trip_error_flags (hhid, personid, tripnum, error_flag)
 			SELECT trip.hhid, trip.personid, trip.tripnum, 'speed unreasonably high' as error_flag
@@ -765,7 +811,7 @@ GO
 				WHERE p.worker = 0 AND trip.dest_purpose in(10,11,14);
 
 GO
--- Step 4. Correct for known error patterns
+-- Step 4b. Correct for known error patterns
 
 	--a. Inconsistent coding of 'return home' as trip purpose
 		UPDATE t1 --marks subsequent correction
