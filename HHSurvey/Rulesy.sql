@@ -715,30 +715,40 @@ GO
 		UPDATE trip SET mode_acc = mode_1,
 						mode_1 = mode_2,
 						mode_2 = mode_3,
-						mode_3 = mode_4,			
-			WHERE 	mode_1 NOT IN(SELECT mode_id FROM transitmodes) AND mode_2 IN(SELECT mode_id FROM transitmodes);
+						mode_3 = mode_4			
+			WHERE mode_1 NOT IN(SELECT mode_id FROM transitmodes) 
+				AND (mode_2 IN(SELECT mode_id FROM transitmodes) OR mode_3 IN(SELECT mode_id FROM transitmodes) OR mode_4 IN(SELECT mode_id FROM transitmodes));
 
 		UPDATE trip SET mode_egr = mode_4, mode_4 = NULL  
 			WHERE mode_4 IS NOT NULL AND mode_4 NOT IN(SELECT mode_id FROM transitmodes)
-			AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes) OR mode_3 IN(SELECT mode_id FROM transitmodes));
+				AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes) OR mode_3 IN(SELECT mode_id FROM transitmodes));
 
 		UPDATE trip SET mode_egr = mode_3, mode_3 = NULL
-		  WHERE mode_3 IS NOT NULL AND mode_4 IS NULL AND mode_3 NOT IN(SELECT mode_id FROM transitmodes) 
-			 AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes));
+			WHERE mode_3 IS NOT NULL AND mode_4 IS NULL AND mode_3 NOT IN(SELECT mode_id FROM transitmodes) 
+				AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes));
 
 		UPDATE trip SET mode_egr = mode_2, mode_2 = NULL
 			WHERE mode_2 IS NOT NULL AND mode_3 IS NULL AND mode_2 NOT IN(SELECT mode_id FROM transitmodes) 
-			AND mode_1 IN(SELECT mode_id FROM transitmodes);
+				AND mode_1 IN(SELECT mode_id FROM transitmodes);
 
 	-- Revise when walk/bike access and/or egress is reported as a mode in a non-transit vehicular trip
 		UPDATE trip SET mode_acc = mode_1,
 						mode_1 = mode_2,
 						mode_2 = mode_3,
-						mode_3 = mode_4,			
-			WHERE 	mode_1 IN(1,2) AND mode_2 > 2;
+						mode_3 = mode_4			
+			WHERE mode_1 IN(1,2) AND (mode_2 > 2 OR mode_3 > 2 OR mode_4 > 2);
 
-/* Here edit walk/bike egress for non-transit vehicular trip
-*/
+		UPDATE trip SET mode_egr = mode_4, mode_4 = NULL
+			WHERE mode_4 IN(1,2,97)
+				AND (mode_1 IN(SELECT mode_id FROM automodes) OR mode_2 IN(SELECT mode_id FROM automodes) OR mode_3 IN(SELECT mode_id FROM automodes));
+
+		UPDATE trip SET mode_egr = mode_3, mode_3 = NULL
+			WHERE mode_3 IN(1,2,97) AND mode_4 IS NULL
+				AND (mode_1 IN(SELECT mode_id FROM automodes) OR mode_2 IN(SELECT mode_id FROM automodes));
+
+		UPDATE trip SET mode_egr = mode_2, mode_2 = NULL
+			WHERE mode_2 IN(1,2,97) AND mode_3 IS NULL
+				AND mode_1 IN(SELECT mode_id FROM automodes);
 
 -- Step 4a. 	Flag inconsistencies
 
