@@ -218,108 +218,6 @@ GO
 			num_trips int NOT NULL
 		)
 
-		CREATE TABLE trip (
-			[hhid] [int] NOT NULL,
-			[personid] [int] NOT NULL,
-			[pernum] [int] NOT NULL,
-			[tripid] bigint NOT NULL,
-			[tripnum] [int] NOT NULL,
-			[traveldate] date NOT NULL,
-			[daynum] [int] NOT NULL,
-			[dayofweek] [int] NOT NULL,
-			[hhgroup] [int] NOT NULL,
-			[copied_trip] [int] NULL,
-			[completed_at] datetime2 NULL,
-			[revised_at] datetime2 NULL,
-			[revised_count] int NULL,
-			[svy_complete] [int] NULL,
-			[depart_time_mam] [int] NULL,
-			[depart_time_hhmm] [nvarchar](255) NULL,
-			[depart_time_timestamp] datetime2 NOT NULL,
-			[arrival_time_mam] [int] NULL,
-			[arrival_time_hhmm] [nvarchar](255) NULL,
-			[arrival_time_timestamp] datetime2 NOT NULL,
-			[origin_name] [nvarchar](255) NULL,
-			[origin_address] [nvarchar](255) NULL,
-			[origin_lat] [float] NOT NULL,
-			[origin_lng] [float] NOT NULL,
-			[dest_name] [nvarchar](255) NULL,
-			[dest_address] [nvarchar](255) NULL,
-			[dest_lat] [float] NOT NULL,
-			[dest_lng] [float] NOT NULL,
-			[trip_path_distance] [float] NULL,
-			[google_duration] [int] NULL,
-			[reported_duration] [int] NULL,
-			[hhmember1] int NULL,
-			[hhmember2] int NULL,
-			[hhmember3] int NULL,
-			[hhmember4] int NULL,
-			[hhmember5] int NULL,
-			[hhmember6] int NULL,
-			[hhmember7] int NULL,
-			[hhmember8] int NULL,
-			[hhmember9] int NULL,
-			[hhmember_none] int NULL,
-			[travelers_hh] [int] NOT NULL,
-			[travelers_nonhh] [int] NOT NULL,
-			[travelers_total] [int] NOT NULL,
-			[origin_purpose] [int] NULL,
-			[o_purpose_other] [nvarchar](max) NULL,
-			[dest_purpose] [int] NULL,
-			[dest_purpose_comment] [nvarchar](max) NULL,
-			[mode_1] smallint NOT NULL,
-			[mode_2] smallint NULL,
-			[mode_3] smallint NULL,
-			[mode_4] smallint NULL,
-			[driver] smallint NULL,
-			[pool_start] smallint NULL,
-			[change_vehicles] smallint NULL,
-			[park_ride_area_start] smallint NULL,
-			[park_ride_area_end] smallint NULL,
-			[park_ride_lot_start] smallint NULL,
-			[park_ride_lot_end] smallint NULL,
-			[toll] smallint NULL,
-			[toll_pay] decimal(8,2) NULL,
-			[taxi_type] smallint NULL,
-			[taxi_pay] decimal(8,2) NULL,
-			[bus_type] smallint NULL,
-			[bus_pay] decimal(8,2) NULL,
-			[bus_cost_dk] smallint NULL,
-			[ferry_type] smallint NULL,
-			[ferry_pay] decimal(8,2) NULL,
-			[ferry_cost_dk] smallint NULL,
-			[rail_type] smallint NULL,
-			[rail_pay] decimal(8,2) NULL,
-			[rail_cost_dk] smallint NULL,
-			[air_type] smallint NULL,
-			[air_pay] decimal(8,2) NULL,
-			[airfare_cost_dk] smallint NULL,
-			[mode_acc] smallint NULL,
-			[mode_egr] smallint NULL,
-			[park] smallint NULL,
-			[park_type] smallint NULL,
-			[park_pay] decimal(8,2) NULL,
-			[transit_system_1] smallint NULL,
-			[transit_system_2] smallint NULL,
-			[transit_system_3] smallint NULL,
-			[transit_system_4] smallint NULL,
-			[transit_system_5] smallint NULL,
-			[transit_line_1] smallint NULL,
-			[transit_line_2] smallint NULL,
-			[transit_line_3] smallint NULL,
-			[transit_line_4] smallint NULL,
-			[transit_line_5] smallint NULL,
-			[speed_mph] [float] NULL,
-			[user_merged] bit NULL,
-			[user_split] bit NULL,
-			[analyst_merged] bit NULL,
-			[analyst_split] bit NULL,
-			[flag_teleport] bit NULL,
-			[proxy_added_trip] bit NULL,
-			[nonproxy_derived_trip] bit NULL,
-			[child_trip_location_tripid] bit NULL
-		)
-
 		CREATE TABLE tripx_raw (
 			[hhid] [int] NULL,
 			[personid] [int] NULL,
@@ -427,6 +325,108 @@ GO
 		BULK INSERT household	FROM '\\aws-prod-file01\SQL2016\DSADEV\1-Household.csv'	WITH (FIELDTERMINATOR=',', FIRSTROW = 2);
 		BULK INSERT person		FROM '\\aws-prod-file01\SQL2016\DSADEV\2-Person.csv'	WITH (FIELDTERMINATOR=',', FIRSTROW = 2);
 		BULK INSERT tripx_raw	FROM '\\aws-prod-file01\SQL2016\DSADEV\5-Trip.csv'		WITH (FIELDTERMINATOR=',', FIRSTROW = 2);
+
+		CREATE TABLE trip (
+			[hhid] [int] NOT NULL,
+			[personid] [int] NOT NULL,
+			[pernum] [int] NOT NULL,
+			[tripid] bigint NOT NULL,
+			[tripnum] [int] NOT NULL,
+			[traveldate] date NOT NULL,
+			[daynum] [int] NOT NULL,
+			[dayofweek] [int] NOT NULL,
+			[hhgroup] [int] NOT NULL,
+			[copied_trip] [int] NULL,
+			[completed_at] datetime2 NULL,
+			[revised_at] datetime2 NULL,
+			[revised_count] int NULL,
+			[svy_complete] [int] NULL,
+			[depart_time_mam] [int] NULL,
+			[depart_time_hhmm] [nvarchar](255) NULL,
+			[depart_time_timestamp] datetime2 NOT NULL,
+			[arrival_time_mam] [int] NULL,
+			[arrival_time_hhmm] [nvarchar](255) NULL,
+			[arrival_time_timestamp] datetime2 NOT NULL,
+			[origin_name] [nvarchar](255) NULL,
+			[origin_address] [nvarchar](255) NULL,
+			[origin_lat] [float] NOT NULL,
+			[origin_lng] [float] NOT NULL,
+			[dest_name] [nvarchar](255) NULL,
+			[dest_address] [nvarchar](255) NULL,
+			[dest_lat] [float] NOT NULL,
+			[dest_lng] [float] NOT NULL,
+			[trip_path_distance] [float] NULL,
+			[google_duration] [int] NULL,
+			[reported_duration] [int] NULL,
+			[hhmember1] int NULL,
+			[hhmember2] int NULL,
+			[hhmember3] int NULL,
+			[hhmember4] int NULL,
+			[hhmember5] int NULL,
+			[hhmember6] int NULL,
+			[hhmember7] int NULL,
+			[hhmember8] int NULL,
+			[hhmember9] int NULL,
+			[hhmember_none] int NULL,
+			[travelers_hh] [int] NOT NULL,
+			[travelers_nonhh] [int] NOT NULL,
+			[travelers_total] [int] NOT NULL,
+			[origin_purpose] [int] NULL,
+			[o_purpose_other] [nvarchar](max) NULL,
+			[dest_purpose] [int] NULL,
+			[dest_purpose_comment] [nvarchar](max) NULL,
+			[mode_1] smallint NOT NULL,
+			[mode_2] smallint NULL,
+			[mode_3] smallint NULL,
+			[mode_4] smallint NULL,
+			[driver] smallint NULL,
+			[pool_start] smallint NULL,
+			[change_vehicles] smallint NULL,
+			[park_ride_area_start] smallint NULL,
+			[park_ride_area_end] smallint NULL,
+			[park_ride_lot_start] smallint NULL,
+			[park_ride_lot_end] smallint NULL,
+			[toll] smallint NULL,
+			[toll_pay] decimal(8,2) NULL,
+			[taxi_type] smallint NULL,
+			[taxi_pay] decimal(8,2) NULL,
+			[bus_type] smallint NULL,
+			[bus_pay] decimal(8,2) NULL,
+			[bus_cost_dk] smallint NULL,
+			[ferry_type] smallint NULL,
+			[ferry_pay] decimal(8,2) NULL,
+			[ferry_cost_dk] smallint NULL,
+			[rail_type] smallint NULL,
+			[rail_pay] decimal(8,2) NULL,
+			[rail_cost_dk] smallint NULL,
+			[air_type] smallint NULL,
+			[air_pay] decimal(8,2) NULL,
+			[airfare_cost_dk] smallint NULL,
+			[mode_acc] smallint NULL,
+			[mode_egr] smallint NULL,
+			[park] smallint NULL,
+			[park_type] smallint NULL,
+			[park_pay] decimal(8,2) NULL,
+			[transit_system_1] smallint NULL,
+			[transit_system_2] smallint NULL,
+			[transit_system_3] smallint NULL,
+			[transit_system_4] smallint NULL,
+			[transit_system_5] smallint NULL,
+			[transit_line_1] smallint NULL,
+			[transit_line_2] smallint NULL,
+			[transit_line_3] smallint NULL,
+			[transit_line_4] smallint NULL,
+			[transit_line_5] smallint NULL,
+			[speed_mph] [float] NULL,
+			[user_merged] bit NULL,
+			[user_split] bit NULL,
+			[analyst_merged] bit NULL,
+			[analyst_split] bit NULL,
+			[flag_teleport] bit NULL,
+			[proxy_added_trip] bit NULL,
+			[nonproxy_derived_trip] bit NULL,
+			[child_trip_location_tripid] bit NULL
+		)
 
 		INSERT INTO trip(
 			 [hhid]
@@ -629,10 +629,10 @@ GO
 			,cast((CASE [proxy_added_trip] when 'true' then 1 when 'false' then 0 ELSE NULL END) as bit)
 			,cast([nonproxy_derived_trip] as bit)
 			,cast([child_trip_location_tripid] as bit)
-			FROM tripx_raw;
+			FROM dbo.tripx_raw;
 		GO
-		DROP TABLE tripx_raw;
-		GO
+--		DROP TABLE tripx_raw;
+--		GO
 
 -- Step 2.  Fill missing fields & parse address fields
 
@@ -644,7 +644,8 @@ GO
 				dest_zip	varchar(5) NULL,
 				dest_is_home bit NULL, 
 				dest_is_work bit NULL,
-				last_trip_per_person bit NULL;
+				last_trip_per_person bit NULL,
+				removal_code tinyint NULL;
 		GO
 		CREATE INDEX hhperson_idx ON trip (hhid ASC, personid ASC);
 		CREATE INDEX tripnum_idx ON trip (tripnum ASC);
@@ -680,8 +681,7 @@ GO
 
 	*/
 
-	--Create standard fields for home and work trips
-		UPDATE trip
+		UPDATE trip --Create standard field for home trip
 			SET dest_is_home = 1
 			WHERE dest_name = 'HOME' 
 				OR(
@@ -691,66 +691,138 @@ GO
 				)
 				OR(dest_purpose = 1 AND dest_name IS NULL);
 
-		UPDATE trip
+		UPDATE trip --Create standard field for work trip
 			SET dest_is_work = 1
 			WHERE dest_name = 'WORK' 
 				OR((dbo.RgxFind([dest_name],' work',1) = 1 
 					OR dbo.RgxFind([dest_name],'^w[or ]?$',1) = 1))
 				OR(dest_purpose = 10 AND dest_name IS NULL);
 
-	--Change 'Other' trip purpose when purpose is provided
-		UPDATE trip 	SET dest_purpose = 1	WHERE dest_purpose = 97 AND dest_is_home = 1;
-		UPDATE trip 	SET dest_purpose = 10	WHERE dest_purpose = 97 AND dest_is_work = 1;
-		UPDATE trip		SET dest_purpose = 33	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(bank|gas|post ?office)',1) = 1;		
-		UPDATE trip		SET dest_purpose = 34	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(doctor|dentist|hospital)',1) = 1;	
-		UPDATE trip		SET dest_purpose = 50	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(coffee|cafe|starbucks|lunch)',1) = 1;		
-		UPDATE trip		SET dest_purpose = 51	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'dog',1) = 1 AND dbo.RgxFind(dest_name,'(walk|park)',1) = 1;
-		UPDATE trip		SET dest_purpose = 51	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'park',1) = 1 AND dbo.RgxFind(dest_name,'(parking|ride)',1) = 0;
-		UPDATE trip		SET dest_purpose = 54	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'church',1) = 1; 
+	--Reclassify purpose (used in later steps)
+
+			UPDATE trip --changes code to pickup/dropoff when passenger number changes, duration is under 20 minutes, and pickup/dropoff mentioned in dest_name
+				SET trip.dest_purpose = 9
+				FROM trip 
+					JOIN person ON trip.hhid=person.hhid AND trip.personid=person.personid 
+					JOIN trip as next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid	AND trip.tripnum + 1 = next_trip.tripnum						
+				WHERE dbo.RgxFind([trip].[dest_name],'(drop|pick)',1) = 1
+					AND trip.dest_purpose <> 9
+					AND trip.travelers_total <> next_trip.travelers_total
+					AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 40;
+
+		--Change 'Other' trip purpose when purpose is provided
+			UPDATE trip 	SET dest_purpose = 1	WHERE dest_purpose = 97 AND dest_is_home = 1;
+			UPDATE trip 	SET dest_purpose = 10	WHERE dest_purpose = 97 AND dest_is_work = 1;
+			UPDATE trip		SET dest_purpose = 33	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(bank|gas|post ?office)',1) = 1;		
+			UPDATE trip		SET dest_purpose = 34	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(doctor|dentist|hospital)',1) = 1;	
+			UPDATE trip		SET dest_purpose = 50	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(coffee|cafe|starbucks|lunch)',1) = 1;		
+			UPDATE trip		SET dest_purpose = 51	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'dog',1) = 1 AND dbo.RgxFind(dest_name,'(walk|park)',1) = 1;
+			UPDATE trip		SET dest_purpose = 51	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'park',1) = 1 AND dbo.RgxFind(dest_name,'(parking|ride)',1) = 0;
+			UPDATE trip		SET dest_purpose = 54	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'church',1) = 1; 
 GO
 
--- Step 3.	Trip access/egress
+-- Step 3.	Trip linking
 
-	-- Revise when access and/or egress is reported as a mode in a transit trip
-		UPDATE trip SET mode_acc = mode_1,
-						mode_1 = mode_2,
-						mode_2 = mode_3,
-						mode_3 = mode_4			
-			WHERE mode_1 NOT IN(SELECT mode_id FROM transitmodes) 
-				AND (mode_2 IN(SELECT mode_id FROM transitmodes) OR mode_3 IN(SELECT mode_id FROM transitmodes) OR mode_4 IN(SELECT mode_id FROM transitmodes));
+	-- Revise access and/or egress when reported as a mode within a trip; runs several times so stored procedure avoids duplicative code
 
-		UPDATE trip SET mode_egr = mode_4, mode_4 = NULL  
-			WHERE mode_4 IS NOT NULL AND mode_4 NOT IN(SELECT mode_id FROM transitmodes)
-				AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes) OR mode_3 IN(SELECT mode_id FROM transitmodes));
+		CREATE PROCEDURE sp_within_trip_access_egress AS 
 
-		UPDATE trip SET mode_egr = mode_3, mode_3 = NULL
-			WHERE mode_3 IS NOT NULL AND mode_4 IS NULL AND mode_3 NOT IN(SELECT mode_id FROM transitmodes) 
-				AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes));
+					UPDATE trip SET mode_acc = CASE WHEN mode_acc > mode_1 THEN mode_acc ELSE mode_1 END, -- transit trip access
+									mode_1 = mode_2,
+									mode_2 = mode_3,
+									mode_3 = mode_4,
+									mode_4 = NULL			
+						WHERE mode_1 NOT IN(SELECT mode_id FROM transitmodes) 
+							AND (mode_2 IN(SELECT mode_id FROM transitmodes) OR mode_3 IN(SELECT mode_id FROM transitmodes) OR mode_4 IN(SELECT mode_id FROM transitmodes));
 
-		UPDATE trip SET mode_egr = mode_2, mode_2 = NULL
-			WHERE mode_2 IS NOT NULL AND mode_3 IS NULL AND mode_2 NOT IN(SELECT mode_id FROM transitmodes) 
-				AND mode_1 IN(SELECT mode_id FROM transitmodes);
+					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_acc ELSE mode_1 END, mode_4 = NULL -- transit trip egress A
+						WHERE mode_4 IS NOT NULL AND mode_4 NOT IN(SELECT mode_id FROM transitmodes)
+							AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes) OR mode_3 IN(SELECT mode_id FROM transitmodes));
 
-	-- Revise when walk/bike access and/or egress is reported as a mode in a non-transit vehicular trip
-		UPDATE trip SET mode_acc = mode_1,
-						mode_1 = mode_2,
-						mode_2 = mode_3,
-						mode_3 = mode_4			
-			WHERE mode_1 IN(1,2) AND (mode_2 > 2 OR mode_3 > 2 OR mode_4 > 2);
+					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_acc ELSE mode_1 END, mode_3 = NULL -- transit trip egress B
+						WHERE mode_3 IS NOT NULL AND mode_4 IS NULL AND mode_3 NOT IN(SELECT mode_id FROM transitmodes) 
+							AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes));
 
-		UPDATE trip SET mode_egr = mode_4, mode_4 = NULL
-			WHERE mode_4 IN(1,2,97)
-				AND (mode_1 IN(SELECT mode_id FROM automodes) OR mode_2 IN(SELECT mode_id FROM automodes) OR mode_3 IN(SELECT mode_id FROM automodes));
+					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_acc ELSE mode_1 END, mode_2 = NULL -- transit trip egress C
+						WHERE mode_2 IS NOT NULL AND mode_3 IS NULL AND mode_2 NOT IN(SELECT mode_id FROM transitmodes) 
+							AND mode_1 IN(SELECT mode_id FROM transitmodes);
 
-		UPDATE trip SET mode_egr = mode_3, mode_3 = NULL
-			WHERE mode_3 IN(1,2,97) AND mode_4 IS NULL
-				AND (mode_1 IN(SELECT mode_id FROM automodes) OR mode_2 IN(SELECT mode_id FROM automodes));
+					UPDATE trip SET mode_acc = CASE WHEN mode_acc > mode_1 THEN mode_acc ELSE mode_1 END, -- non-transit trip access
+									mode_1 = mode_2,
+									mode_2 = mode_3,
+									mode_3 = mode_4,
+									mode_4 = NULL				
+						WHERE mode_1 IN(1,2) AND (mode_2 > 2 OR mode_3 > 2 OR mode_4 > 2);
 
-		UPDATE trip SET mode_egr = mode_2, mode_2 = NULL
-			WHERE mode_2 IN(1,2,97) AND mode_3 IS NULL
-				AND mode_1 IN(SELECT mode_id FROM automodes);
+					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_acc ELSE mode_1 END, mode_4 = NULL -- non-transit trip egress A
+						WHERE mode_4 IN(1,2)
+							AND (mode_1 IN(SELECT mode_id FROM automodes) OR mode_2 IN(SELECT mode_id FROM automodes) OR mode_3 IN(SELECT mode_id FROM automodes));
 
--- Step 4a. 	Flag inconsistencies
+					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_acc ELSE mode_1 END, mode_3 = NULL -- non-transit trip egress B
+						WHERE mode_3 IN(1,2) AND mode_4 IS NULL
+							AND (mode_1 IN(SELECT mode_id FROM automodes) OR mode_2 IN(SELECT mode_id FROM automodes));
+
+					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_acc ELSE mode_1 END, mode_2 = NULL -- non-transit trip egress C
+						WHERE mode_2 IN(1,2) AND mode_3 IS NULL
+							AND mode_1 IN(SELECT mode_id FROM automodes);
+
+			EXEC sp_within_trip_access_egress;
+			EXEC sp_within_trip_access_egress;
+			EXEC sp_within_trip_access_egress;	
+			DROP PROCEDURE sp_within_trip_access_egress;
+
+	-- Revise access when reported as a separate trip; store the eliminated (access) trips
+
+		UPDATE trip
+			SET trip.mode_acc 				= trip.mode_1,
+				trip.depart_time_timestamp 	= prev_trip.depart_time_timestamp,
+				trip.origin_name 			= prev_trip.origin_name,
+				trip.origin_address 		= prev_trip.origin_address,
+				trip.origin_lat 			= prev_trip.origin_lat,
+				trip.origin_lng				= prev_trip.origin_lng,
+				trip.trip_path_distance		= prev_trip.trip_path_distance + trip.trip_path_distance,
+				trip.google_duration		= prev_trip.google_duration + trip.google_duration,
+				trip.reported_duration		= prev_trip.reported_duration + trip.reported_duration,
+				prev_trip.removal_code		= 1
+			FROM trip JOIN trip AS prev_trip ON trip.hhid=prev_trip.hhid AND trip.personid=prev_trip.personid AND trip.tripnum - 1 = prev_trip.tripnum
+			WHERE prev_trip.mode_1 = 1 AND trip.mode_1 <> 1 AND prev_trip.dest_purpose <> 9 AND trip.travelers_hh = prev_trip.travelers_hh
+				AND datediff(minute, prev_trip.arrival_time_timestamp, trip.depart_time_timestamp) < 20
+				AND (prev_trip.dest_purpose = trip.dest_purpose OR prev_trip.dest_purpose = 60);				
+
+		SELECT * INTO eliminated_trips FROM trip WHERE removal_code = 1;
+		DELETE FROM trip WHERE removal_code = 1;
+	
+	-- Revise egress when reported as a separate trip; store the eliminated (egress) trips
+		
+		UPDATE trip
+			SET trip.mode_egr 				= next_trip.mode_1,
+				trip.arrival_time_timestamp = next_trip.arrival_time_timestamp,
+				trip.dest_name 				= next_trip.dest_name,
+				trip.dest_address 			= next_trip.dest_address,
+				trip.dest_lat 				= next_trip.dest_lat,
+				trip.dest_lng				= next_trip.dest_lng,
+				trip.trip_path_distance		= next_trip.trip_path_distance + trip.trip_path_distance,
+				trip.google_duration		= next_trip.google_duration + trip.google_duration,
+				trip.reported_duration		= next_trip.reported_duration + trip.reported_duration,
+				next_trip.removal_code		= 2
+			FROM trip JOIN trip AS next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum 
+			WHERE next_trip.mode_1 = 1 AND trip.mode_1 <> 1 AND next_trip.dest_purpose <> 9 AND trip.travelers_hh = prev_trip.travelers_hh
+				AND datediff(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 10
+				AND (trip.dest_purpose = next_trip.dest_purpose OR trip.dest_purpose = 60);		
+
+		INSERT INTO eliminated_trips SELECT * FROM trip WHERE removal_code = 2;
+		DELETE FROM trip WHERE removal_code = 2;
+
+	-- Link remaining transit trip components; store the eliminated trips
+
+
+
+
+	-- Insert missing passenger trips
+	/* FILL IN HERE */
+
+
+-- Step 5a. Flag inconsistencies
 
 		CREATE TABLE trip_error_flags(
 			hhid int not NULL,
@@ -821,22 +893,22 @@ GO
 				WHERE p.worker = 0 AND trip.dest_purpose in(10,11,14);
 
 GO
--- Step 4b. Correct for known error patterns
+-- Step 5b. Correct for known error patterns
 
 	--a. Inconsistent coding of 'return home' as trip purpose
 		UPDATE t1 --marks subsequent correction
 			SET t1.rulesy_fixed ='yes'
 			FROM trip_error_flags as t1 join trip on t1.hhid=trip.hhid AND t1.personid=trip.personid AND t1.tripnum=trip.tripnum
-				JOIN trip AS prev_trip on trip.hhid=prev_trip.hhid AND trip.personid=prev_trip.personid
+				JOIN trip AS prev_trip on trip.hhid=prev_trip.hhid AND trip.personid=prev_trip.personid AND trip.tripnum - 1 = prev_trip.tripnum
 			WHERE trip.dest_purpose <> 1 and trip.dest_is_home = 1 AND t1.error_flag = 'non-home trip purpose, destination home'
-				AND trip.tripnum - 1 = prev_trip.tripnum AND trip.dest_purpose=prev_trip.dest_purpose;
+				AND trip.dest_purpose=prev_trip.dest_purpose;
 
 		UPDATE trip --revises purpose field for return portion of a single stop loop trip 
 			SET trip.dest_purpose = 1 
 			FROM trip 
-				JOIN trip AS prev_trip on trip.hhid=prev_trip.hhid AND trip.personid=prev_trip.personid
+				JOIN trip AS prev_trip on trip.hhid=prev_trip.hhid AND trip.personid=prev_trip.personid AND trip.tripnum - 1 = prev_trip.tripnum
 			WHERE trip.dest_purpose <> 1 and trip.dest_is_home = 1
-				AND trip.tripnum - 1 = prev_trip.tripnum AND trip.dest_purpose=prev_trip.dest_purpose;
+				AND trip.dest_purpose=prev_trip.dest_purpose;
 GO
 	--b. Drop-off and pick-up trips coded incorrectly as school trips (or other codes)
 		UPDATE t1 --marks subsequent correction
@@ -844,9 +916,8 @@ GO
 			FROM trip_error_flags as t1 
 				JOIN trip ON t1.hhid=trip.hhid AND t1.personid=trip.personid AND t1.tripnum=trip.tripnum 
 				JOIN person ON trip.hhid=person.hhid AND trip.personid=person.personid 
-				JOIN trip as next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid
+				JOIN trip as next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
 			WHERE trip.dest_purpose = 6 AND t1.error_flag = 'suspected drop-off or pick-up coded as school trip'
-				AND trip.tripnum + 1 = next_trip.tripnum
 				AND trip.travelers_total <> next_trip.travelers_total
 				AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 40;
 
@@ -854,31 +925,18 @@ GO
 			SET trip.dest_purpose = 9
 			FROM trip 
 				JOIN person ON trip.hhid=person.hhid AND trip.personid=person.personid 
-				JOIN trip as next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid
+				JOIN trip as next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
 			WHERE trip.dest_purpose = 6
-				AND trip.tripnum + 1 = next_trip.tripnum
 				AND trip.travelers_total <> next_trip.travelers_total
 				AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 40;
 		
-		UPDATE trip --changes code from everything else to pickup/dropoff when passenger number changes, duration is under 40 minutes, and pickup/dropoff mentioned in dest_name
-			SET trip.dest_purpose = 9
-			FROM trip 
-				JOIN person ON trip.hhid=person.hhid AND trip.personid=person.personid 
-				JOIN trip as next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid							
-			WHERE trip.tripnum + 1 = next_trip.tripnum
-				AND dbo.RgxFind([trip].[dest_name],'(drop|pick)',1) = 1
-				AND trip.dest_purpose <> 9
-				AND trip.travelers_total <> next_trip.travelers_total
-				AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 40;
-
 		UPDATE t1 --marks subsequent correction
 			SET t1.rulesy_fixed ='yes'
 			FROM trip_error_flags as t1 
 				JOIN trip ON t1.hhid=trip.hhid AND t1.personid=trip.personid AND t1.tripnum=trip.tripnum 
 				JOIN person ON trip.hhid=person.hhid AND trip.personid=person.personid 
-				JOIN trip as next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid
+				JOIN trip as next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
 			WHERE trip.dest_purpose = 6
-				AND trip.tripnum + 1 = next_trip.tripnum
 				AND trip.travelers_total <> next_trip.travelers_total
 				AND dbo.RgxFind(trip.dest_name,'(school|care)',1) = 1
 				AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) Between 40 and 240;	
@@ -887,10 +945,14 @@ GO
 			SET trip.dest_purpose = 56
 			FROM trip 
 				JOIN person ON trip.hhid=person.hhid AND trip.personid=person.personid 
-				JOIN trip as next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid
+				JOIN trip as next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
 			WHERE trip.dest_purpose = 6
-				AND trip.tripnum + 1 = next_trip.tripnum
 				AND trip.travelers_total <> next_trip.travelers_total
 				AND dbo.RgxFind(trip.dest_name,'(school|care)',1) = 1
 				AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) Between 40 and 240;				
 GO
+
+	/*-- Impute:
+		-- Access/egress where missing
+
+	*/	
