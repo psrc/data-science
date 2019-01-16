@@ -83,14 +83,33 @@ for personid in personid_list:
     
 ## seperate depart time and arrival time into two rows 
 test1 = trip_sample.copy()
-test1['D/A'] = 'D'
+test1['D/A'] = 'D' #this data table will host all origin information
 test2 = trip_sample.copy()
-test2['D/A'] = 'A'
+test2['D/A'] = 'A' # destination info
 
-######### for departure time 
+     
+ 
+########## prepare for Tableau mapping ############
+## reshape the trip table, by puting all origin and destination lat, long together
+
+# origin == departure
+test1['AY_OD_lat'] = test1['origin_lat']
+test1['AY_OD_lng'] = test1['origin_lng']
+test1['AY_address_name'] = test1['origin_name']
+# destination == arrival
+test2['AY_OD_lat'] = test2['dest_lat']
+test2['AY_OD_lng'] = test2['dest_lng']    
+test2['AY_address_name'] = test2['dest_name']
+## 
+test1['AY_DA_time_mam'] = test1['depart_time_mam']
+test2['AY_DA_time_mam'] = test2['arrival_time_mam']
+
+ 
+######### for time clock mapping ##############
+####### departure time clock position 
 test = test1.copy()
-## get unique id for every time mam clock position
 
+## get unique id for every time mam clock position
 test['depart_time_mam'] = test['depart_time_mam'].fillna(0)
 test['depart_time_mam'] = test['depart_time_mam'].astype(int)
 test['arrival_time_mam'] = test['arrival_time_mam'].fillna(0)
@@ -104,10 +123,10 @@ test['arrival_time_id'] = test['personid'].astype(str) + '_' + test['arrival_tim
 my_merge1 = pd.merge(left = my_time_mam_clock, right = test, how='left', left_on = 'time_id', right_on = 'depart_time_id')
 
   
-####### for arrival time clock position mark  
+####### arrival time clock position mark  
 test = test2.copy()
-## get unique id for every time mam clock position
 
+## get unique id for every time mam clock position
 test['depart_time_mam'] = test['depart_time_mam'].fillna(0)
 test['depart_time_mam'] = test['depart_time_mam'].astype(int)
 test['arrival_time_mam'] = test['arrival_time_mam'].fillna(0)
@@ -120,16 +139,16 @@ test['arrival_time_id'] = test['personid'].astype(str) + '_' + test['arrival_tim
 my_merge2 = pd.merge(left = my_time_mam_clock, right = test, how='left', left_on = 'time_id', right_on = 'arrival_time_id')
 
 
+################ combine all o-d data ########################
 my_df = pd.concat([my_merge1, my_merge2])
 my_df = my_df.reset_index()
-# to create a new column combine a/d time mam into one column 
-my_df[my_df['D/A'] == 'D']['new_depart_arrival_time_mam'] = my_df['depart_time_mam']
-my_df[my_df['D/A'] == 'A']['new_depart_arrival_time_mam'] = my_df['arrival_time_mam']
+
 
 
 output_file_name = 'trip_sample_merged_time_mam.csv'
 my_df.to_csv(os.path.join(DATA_PATH, output_file_name), sep=',')
 
+print ('done')
 
 
 '''
