@@ -1,18 +1,18 @@
 ---
-title: "Working with LEHD Work Flow Data"
+title: "Working with LEHD Worker Flow Data"
 output: html_notebook
 ---
 
-This notebook will porocess the LEHD Worker Flow data and place the cleaned results into the Central Database. This notebook combines both R and Python code. This first code chunk uses python to create a datframe to import in Elmer.
+This notebook will porocess the LEHD Worker Flow data and place the cleaned results into the Central Database. This notebook combines both R and Python code. This first code chunk uses python to create a datframe to import in Elmer and then uses R to replace the table in the Central Database.
 
 ```{r setup, include = FALSE}
 library(reticulate)
 library(odbc)
-use_condaenv("r-reticulate")
 
 # Run python code that processes data for import to elmer
+start_time <- Sys.time()
 source_python("lehd-workers-to-elmer.py")
-worker_flow <- create_worker_flow_df()
+worker_flow <- create_worker_flow_df(2005,2015)
 
 # SQL Database Connection settings
 elmer_connection <- dbConnect(odbc::odbc(),
@@ -22,9 +22,18 @@ elmer_connection <- dbConnect(odbc::odbc(),
   trusted_connection = "yes"
   )
 
+# Clean up Data Types in the dataframe before it is pushed to teh database
+worker_flow$record_id <- as.integer(worker_flow$record_id)
+worker_flow$home_fips <- as.integer(worker_flow$home_fips)
+worker_flow$year <- as.integer(worker_flow$year)
+worker_flow$value <- as.integer(worker_flow$value)
+
 # Now write data to Elmer
 dbWriteTable(elmer_connection, "lehd_otm_county_workers", as.data.frame(worker_flow), overwrite=TRUE)
 dbDisconnect(elmer_connection)
+
+end_time <- Sys.time()
+end_time - start_time
 
 ```
 
