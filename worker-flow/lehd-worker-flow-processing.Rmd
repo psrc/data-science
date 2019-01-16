@@ -1,0 +1,31 @@
+---
+title: "Working with LEHD Work Flow Data"
+output: html_notebook
+---
+
+This notebook will porocess the LEHD Worker Flow data and place the cleaned results into the Central Database. This notebook combines both R and Python code. This first code chunk uses python to create a datframe to import in Elmer.
+
+```{r setup, include = FALSE}
+library(reticulate)
+library(odbc)
+use_condaenv("r-reticulate")
+
+# Run python code that processes data for import to elmer
+source_python("lehd-workers-to-elmer.py")
+worker_flow <- create_worker_flow_df()
+
+# SQL Database Connection settings
+elmer_connection <- dbConnect(odbc::odbc(),
+  driver = "SQL Server",
+  server = "sql2016\\DSADEV",
+  database = "Sandbox",
+  trusted_connection = "yes"
+  )
+
+# Now write data to Elmer
+dbWriteTable(elmer_connection, "lehd_otm_county_workers", as.data.frame(worker_flow), overwrite=TRUE)
+dbDisconnect(elmer_connection)
+
+```
+
+ 
