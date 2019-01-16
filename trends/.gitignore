@@ -1,0 +1,7 @@
+# OntheMap gitignore file
+
+# don't want to checkin the results of the markdown rendering:
+*.html
+*.xlsx
+input/
+output/

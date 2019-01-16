@@ -1,0 +1,377 @@
+---
+title: "Puget Sound Trends"
+author: "Executive Board Presentation &#13; Puget Sound Regional Council"
+date: "January 24, 2019"
+output: 
+  powerpoint_presentation:
+    reference_doc: psrc-template.pptx
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(odbc)
+library(DBI)
+library(data.table)
+library(ggplot2)
+library(scales)
+library(knitr)
+library(lubridate)
+library(plotly)
+library(leaflet)
+library(sp)
+library(rgdal)
+library(DT)
+
+# Genral FIPS ID's for standard summaries
+psrc_region <- c('53033','53035', '53053', '53061')
+king_county <- c('53033')
+kitsap_county <- c('53035')
+pierce_county <- c('53053')
+snohomish_county <- c('53061')
+
+psrc_colors <- c("King County  " = "#91268F",
+                 "Kitsap County  " = "#F05A28",
+                 "Pierce County  " = "#8CC63E",
+                 "Snohomish County  " = "#00A7A0")
+
+# Function to Create a Bar Chart for a specific geograhpy
+create_bar_chart <- function(table, county, xcolumn, ycolumn, fcolumn, ylimit) {
+
+  psrc_colors <- c(
+    "King County  " = "#91268F",
+    "Kitsap County  " = "#F05A28",
+    "Pierce County  " = "#8CC63E",
+    "Snohomish County  " = "#00A7A0")
+
+  # Create a Set of bar charts grouped by year for each area
+  job_chart <- ggplot(table, aes(x = xcolumn, y= ycolumn, fill= fcolumn), show.legend = FALSE) +
+  geom_col()+
+  scale_fill_manual(values=psrc_colors)+
+  scale_y_continuous(labels = comma, name = "Covered Employment",limits = c(0, ylimit))+
+  xlab("Year")+
+  theme_light()+
+  ggtitle(paste0("Monthly Covered Employment: ", county))+
+  theme(legend.position="none")
+
+}
+
+# Function to create a County Specific Job set
+create_geographic_summary <- function(table, geography, idate, pdate, cdate) {
+  
+  working_table <- table[area_fips %in% geography]
+  job_totals <- working_table[,.(covered_employment=sum(value)),by=.(date)]
+
+  initial_jobs <- job_totals[date %in% idate,covered_employment]
+  previous_jobs <- job_totals[date %in% pdate,covered_employment] 
+  current_jobs <- job_totals[date %in% cdate,covered_employment]
+
+  total_change <- current_jobs - initial_jobs
+  annual_change <- current_jobs - previous_jobs
+  
+  total_percent_change <- (total_change / initial_jobs) * 100
+  annual_percent_change <- (annual_change / previous_jobs) * 100
+
+  # Formatted numbers for text display
+  i <- format(round(as.numeric(initial_jobs), -1), nsmall=0, big.mark=",")
+  p <- format(round(as.numeric(previous_jobs), -1), nsmall=0, big.mark=",")
+  c <- format(round(as.numeric(current_jobs), -1), nsmall=0, big.mark=",")
+
+  tc <- format(round(as.numeric(total_change), -1), nsmall=0, big.mark=",")
+  ac <- format(round(as.numeric(annual_change), -1), nsmall=0, big.mark=",")
+
+  ptc <- format(round(as.numeric(total_percent_change), 1), nsmall=0, big.mark=",")
+  pac <- format(round(as.numeric(annual_percent_change), 1), nsmall=0, big.mark=",")
+  
+  summary_results <- list(i, p, c, tc, ac, ptc, pac, total_change, annual_change)
+
+}
+
+# SQL Database Connection settings
+elmer_connection <- dbConnect(odbc::odbc(),
+  driver = "SQL Server",
+  server = "sql2016\\DSADEV",
+  database = "Sandbox",
+  trusted_connection = "yes"
+  )
+```
+
+## Overview
+
+Topics covered in today's presentation:
+
+- How many jobs are there?
+- Where do people work?
+- SeaTac Airport passenger volume changes
+
+# Employment & Wage Trends
+
+```{r job_growth_setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+# Table Name from the Central Database
+working_dbtable <- "Craig.qcew_quarterly_msa_employment"
+
+# Load the Table from the database and then close the connection
+msa_data <- dbReadTable(elmer_connection,SQL(working_dbtable))
+odbc::dbDisconnect(elmer_connection)
+
+setDT(msa_data)
+
+# convert the date column to info in format 'mm/dd/yyyy'
+msa_data$date <- lubridate::mdy(msa_data$date)
+
+# Figure out dates from the dataset for use in the summary
+initial_date <- min(msa_data$date)
+current_date <- max(msa_data$date)
+previous_date <- as.Date(current_date) %m-% months(12)
+
+initial_year <- year(initial_date)
+previous_year <- year(previous_date)
+current_year <- year(current_date)
+
+first_month <- months(initial_date)
+last_month <- months(current_date)
+
+# Create Region specific datatables for further analysis
+psrc_data <- msa_data[area_fips %in% psrc_region]
+monthly_jobs <- psrc_data[attribute == 'jobs']
+monthly_jobs$area_name <- gsub('Washington','',monthly_jobs$area_name)
+
+working_table <- monthly_jobs[area_fips %in% psrc_region]
+region_jobs <- working_table[,.(covered_employment=sum(value)),by=.(date)]
+
+# Create a line graph for the regional job trend
+regional_job_trend <- ggplot(region_jobs, aes(x=date,y=covered_employment)) +
+  geom_line(color="#F05A28",size=1.5) +
+  scale_y_continuous(labels = comma, name = "Covered Employment", limits = c(1000000, 3000000))+
+  theme_light()+
+  theme(panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))+
+  xlab("Year")+
+  ggtitle("Monthly Covered Employment: PSRC Region")
+
+# Create Summary Data by geography
+region_results <- create_geographic_summary(monthly_jobs,psrc_region,initial_date,previous_date,current_date)
+
+king_results <- create_geographic_summary(monthly_jobs,king_county,initial_date,previous_date,current_date)
+king_share_annual_change <- format(round((king_results[[9]] / region_results[[9]])*100,1), nsmall=0)
+king_share_total_change <- format(round((king_results[[8]] / region_results[[8]])*100,1), nsmall=0)
+
+kitsap_results <- create_geographic_summary(monthly_jobs,kitsap_county,initial_date,previous_date,current_date)
+kitsap_share_annual_change <- format(round((kitsap_results[[9]] / region_results[[9]])*100,1), nsmall=0)
+kitsap_share_total_change <- format(round((kitsap_results[[8]] / region_results[[8]])*100,1), nsmall=0)
+
+pierce_results <- create_geographic_summary(monthly_jobs,pierce_county,initial_date,previous_date,current_date)
+pierce_share_annual_change <- format(round((pierce_results[[9]] / region_results[[9]])*100,1), nsmall=0)
+pierce_share_total_change <- format(round((pierce_results[[8]] / region_results[[8]])*100,1), nsmall=0)
+
+snohomish_results <- create_geographic_summary(monthly_jobs,snohomish_county,initial_date,previous_date,current_date)
+snohomish_share_annual_change <- format(round((snohomish_results[[9]] / region_results[[9]])*100,1), nsmall=0)
+snohomish_share_total_change <- format(round((snohomish_results[[8]] / region_results[[8]])*100,1), nsmall=0)
+
+```
+
+## Regional Employment Continues to Increase
+
+:::::::::::::: {.columns}
+::: {.column}
+In `r toString(last_month)` of `r toString(current_year)` there were `r toString(region_results[[3]])` in the region, an increase of over `r toString(region_results[[4]])` jobs (a `r toString(region_results[[6]])`% change) since `r toString(initial_year)`.
+
+- King County has added over `r toString(king_results[[4]])` jobs (`r toString(king_share_total_change)`% of the regional increase).
+
+- Kitsap County has added over `r toString(kitsap_results[[4]])` jobs (`r toString(kitsap_share_total_change)`% of the regional increase).
+
+- Pierce County has added over `r toString(pierce_results[[4]])` jobs (`r toString(pierce_share_total_change)`% of the regional increase).
+
+- Snohomish County has added over `r toString(snohomish_results[[4]])` jobs (`r toString(snohomish_share_total_change)`% of the regional increase).
+
+:::
+::: {.column}
+```{r regional_job_trend, echo = FALSE}
+regional_job_trend
+```
+:::
+::::::::::::::
+
+```{r wage_growth_setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+# Create Region specific datatables for further analysis
+weekly_wages <- psrc_data[attribute == 'wages']
+weekly_wages$area_name <- gsub('Washington','',weekly_wages$area_name)
+weekly_wages <- weekly_wages[months(date) == last_month]
+
+# King County
+king_wage_initial <- weekly_wages[year %in% initial_year & area_fips=='53033',value]
+king_wage_current <- weekly_wages[year %in% current_year & area_fips=='53033',value]
+king_wage_delta <- king_wage_current - king_wage_initial
+king_wage_percentage <- format(round((king_wage_delta / king_wage_initial)*100,1), nsmall=0)
+ikinw <- format(round(as.numeric(king_wage_initial), -1), nsmall=0, big.mark=",")
+ckinw <- format(round(as.numeric(king_wage_current), -1), nsmall=0, big.mark=",")
+
+# Kitsap County
+kitsap_wage_initial <- weekly_wages[year %in% initial_year & area_fips=='53035',value]
+kitsap_wage_current <- weekly_wages[year %in% current_year & area_fips=='53035',value]
+kitsap_wage_delta <- kitsap_wage_current - kitsap_wage_initial
+kitsap_wage_percentage <- format(round((kitsap_wage_delta / kitsap_wage_initial)*100,1), nsmall=0)
+ikitw <- format(round(as.numeric(kitsap_wage_initial), -1), nsmall=0, big.mark=",")
+ckitw <- format(round(as.numeric(kitsap_wage_current), -1), nsmall=0, big.mark=",")
+
+# pierce County
+pierce_wage_initial <- weekly_wages[year %in% initial_year & area_fips=='53053',value]
+pierce_wage_current <- weekly_wages[year %in% current_year & area_fips=='53053',value]
+pierce_wage_delta <- pierce_wage_current - pierce_wage_initial
+pierce_wage_percentage <- format(round((pierce_wage_delta / pierce_wage_initial)*100,1), nsmall=0)
+ipiew <- format(round(as.numeric(pierce_wage_initial), -1), nsmall=0, big.mark=",")
+cpiew <- format(round(as.numeric(pierce_wage_current), -1), nsmall=0, big.mark=",")
+
+# snohomish County
+snohomish_wage_initial <- weekly_wages[year %in% initial_year & area_fips=='53061',value]
+snohomish_wage_current <- weekly_wages[year %in% current_year & area_fips=='53061',value]
+snohomish_wage_delta <- snohomish_wage_current - snohomish_wage_initial
+snohomish_wage_percentage <- format(round((snohomish_wage_delta / snohomish_wage_initial)*100,1), nsmall=0)
+isnow <- format(round(as.numeric(snohomish_wage_initial), -1), nsmall=0, big.mark=",")
+csnow <- format(round(as.numeric(snohomish_wage_current), -1), nsmall=0, big.mark=",")
+
+# Create a line chart for wagres by county
+county_wage_trend <- ggplot(weekly_wages, aes(x=date,y=value, color=area_name)) +
+  geom_line(size = 1.5) +
+  scale_color_manual(values=psrc_colors)+
+  scale_y_continuous(labels = comma, name = "Weekly Wage", limits = c(0, 2500))+
+  theme_light()+
+  theme(panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(colour = "black"))+
+  theme(legend.position="bottom")+
+  theme(legend.title=element_blank())+
+  xlab("Year")+
+  ggtitle("Weekly Wages by County: PSRC Region")
+
+
+```
+
+## Wages are increasing - but at different rates
+
+:::::::::::::: {.columns}
+::: {.column}
+Between `r toString(last_month)` of `r toString(initial_year)` and `r toString(last_month)` of `r toString(current_year)`, wages have been growing at different rates across the four counties.
+
+- Average weekly wages in King County changed from $`r toString(ikinw)` to $`r toString(ckinw)` (a `r toString(king_wage_percentage)`% change).
+
+- Average weekly wages in Kitsap County changed from $`r toString(ikitw)` to $`r toString(ckitw)` (a `r toString(kitsap_wage_percentage)`% change).
+
+- Average weekly wages in Pierce County changed from $`r toString(ipiew)` to $`r toString(cpiew)` (a `r toString(pierce_wage_percentage)`% change).
+
+- Average weekly wages in Snohomish County changed from $`r toString(isnow)` to $`r toString(csnow)` (a `r toString(snohomish_wage_percentage)`% change).
+
+:::
+::: {.column}
+```{r county_wage_trend, echo = FALSE}
+county_wage_trend
+```
+
+:::
+::::::::::::::
+
+# Where do people work?
+
+```{r worker_flow_setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+# SQL Database Connection settings
+elmer_connection <- dbConnect(odbc::odbc(),
+  driver = "SQL Server",
+  server = "sql2016\\DSADEV",
+  database = "Sandbox",
+  trusted_connection = "yes"
+  )
+
+# Table Name from the Central Database
+working_dbtable <- "lehd_otm_county_workers"
+
+# Load the Table from the database and then close the connection
+lehd_data <- dbReadTable(elmer_connection,SQL(working_dbtable))
+odbc::dbDisconnect(elmer_connection)
+
+setDT(lehd_data)
+
+```
+
+## Where King County Residents Work
+
+```{r king_worker_flow_setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+working_geography <- c('033')
+working_years <- c('2005')
+working_table <- lehd_data[home_county %in% working_geography]
+working_table <- working_table[year %in% working_years]
+
+# Create a summary of Jobs by Jurisdiction
+total_workers <- working_table[,.(number_of_workers=sum(value)),by=.(work_county,work_city)]
+total_workers <- total_workers[order(-rank(number_of_workers))]
+nms <- c("County", "Jurisdiction", "Workers")
+setnames(total_workers, nms)
+total_workers$Workers <- format(round(as.numeric(total_workers$Workers), -1), nsmall=0, big.mark=",")
+
+top_ten <- total_workers[1:10]
+top_ten_commute_cities <- kable(top_ten)
+
+# Merge the job data with the Washington State County Shapefile
+jobs_to_merge <- working_table[,c("work_block","value")]
+block.shape <- readOGR(dsn='D:/coding/data-science/trends/input/blocks',layer='wa_blocks_wgs1984',stringsAsFactors = FALSE)
+king_jobs <- sp::merge(block.shape, jobs_to_merge, by.x = "GEOID10", by.y = "work_block")
+king_jobs$value[is.na(king_jobs$value)] <- 0
+
+# Set bins for use in map based on range
+rng <- range(king_jobs$value)
+max_bin <- max(abs(rng))
+round_to <- 10^floor(log10(max_bin))
+max_bin <- ceiling(max_bin/round_to)*round_to
+breaks <- (sqrt(max_bin)*c(0.1, 0.2,0.4, 0.6, 0.8, 1))^2
+
+bins <- c(0, breaks)
+pal <- colorBin("Blues", domain = king_jobs$value, bins = bins)
+
+king_worker_cities <- leaflet(data = king_jobs) %>% 
+  addTiles() %>%
+  addPolygons(fillColor = pal(king_jobs$value_share),
+              weight = 2,
+              opacity = 1,
+              color = "white",
+              dashArray = "3",
+              fillOpacity = 0.7)%>%
+  addLegend("bottomright", pal=pal, values = king_jobs$value,
+            title = "Number of Workers",
+            labFormat = labelFormat(suffix = " workers"),
+            opacity = 1)
+
+```
+
+:::::::::::::: {.columns}
+::: {.column}
+
+```{r king_workers_trend, echo = FALSE}
+top_ten_commute_cities
+```
+
+:::
+::: {.column}
+
+```{r king_workers_cities, echo = FALSE}
+#king_worker_cities
+```
+
+:::
+::::::::::::::
+
+## R Markdown
+
+This is an R Markdown presentation. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document.
