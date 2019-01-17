@@ -22,10 +22,11 @@ counties = {'chelan':'53007',
             'yakima':'53077'}
 
 working_directory = os.getcwd()
-input_directory = os.path.join(working_directory, 'input')
+input_directory ='//file2/e2projects_two/elmer-testing/lehd-on-the-map'
+shapefile_directory = '//file2/e2projects_two/elmer-testing/shapefiles/'
 
 # Statewide Block File for merging
-block_dbf = os.path.join(input_directory,'wa_blocks_wgs1984.dbf')
+block_dbf = os.path.join(shapefile_directory,'wa_blocks_wgs1984.dbf')
 
 def create_worker_flow_df(start_year,end_year):
     
@@ -93,3 +94,4 @@ def create_worker_flow_df(start_year,end_year):
     final_df = final_df.loc[:,final_columns]
     
     return final_df
+
