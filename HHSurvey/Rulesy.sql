@@ -735,15 +735,15 @@ GO
 						WHERE mode_1 NOT IN(SELECT mode_id FROM transitmodes) 
 							AND (mode_2 IN(SELECT mode_id FROM transitmodes) OR mode_3 IN(SELECT mode_id FROM transitmodes) OR mode_4 IN(SELECT mode_id FROM transitmodes));
 
-					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_acc ELSE mode_1 END, mode_4 = NULL -- transit trip egress A
+					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_egr ELSE mode_1 END, mode_4 = NULL -- transit trip egress A
 						WHERE mode_4 IS NOT NULL AND mode_4 NOT IN(SELECT mode_id FROM transitmodes)
 							AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes) OR mode_3 IN(SELECT mode_id FROM transitmodes));
 
-					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_acc ELSE mode_1 END, mode_3 = NULL -- transit trip egress B
+					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_egr ELSE mode_1 END, mode_3 = NULL -- transit trip egress B
 						WHERE mode_3 IS NOT NULL AND mode_4 IS NULL AND mode_3 NOT IN(SELECT mode_id FROM transitmodes) 
 							AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes));
 
-					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_acc ELSE mode_1 END, mode_2 = NULL -- transit trip egress C
+					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_egr ELSE mode_1 END, mode_2 = NULL -- transit trip egress C
 						WHERE mode_2 IS NOT NULL AND mode_3 IS NULL AND mode_2 NOT IN(SELECT mode_id FROM transitmodes) 
 							AND mode_1 IN(SELECT mode_id FROM transitmodes);
 
@@ -754,15 +754,15 @@ GO
 									mode_4 = NULL				
 						WHERE mode_1 IN(1,2) AND (mode_2 > 2 OR mode_3 > 2 OR mode_4 > 2);
 
-					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_acc ELSE mode_1 END, mode_4 = NULL -- non-transit trip egress A
+					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_egr ELSE mode_1 END, mode_4 = NULL -- non-transit trip egress A
 						WHERE mode_4 IN(1,2)
 							AND (mode_1 IN(SELECT mode_id FROM automodes) OR mode_2 IN(SELECT mode_id FROM automodes) OR mode_3 IN(SELECT mode_id FROM automodes));
 
-					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_acc ELSE mode_1 END, mode_3 = NULL -- non-transit trip egress B
+					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_egr ELSE mode_1 END, mode_3 = NULL -- non-transit trip egress B
 						WHERE mode_3 IN(1,2) AND mode_4 IS NULL
 							AND (mode_1 IN(SELECT mode_id FROM automodes) OR mode_2 IN(SELECT mode_id FROM automodes));
 
-					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_acc ELSE mode_1 END, mode_2 = NULL -- non-transit trip egress C
+					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_egr ELSE mode_1 END, mode_2 = NULL -- non-transit trip egress C
 						WHERE mode_2 IN(1,2) AND mode_3 IS NULL
 							AND mode_1 IN(SELECT mode_id FROM automodes);
 
