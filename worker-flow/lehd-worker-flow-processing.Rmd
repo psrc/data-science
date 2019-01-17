@@ -5,7 +5,7 @@ output: html_notebook
 
 This notebook will porocess the LEHD Worker Flow data and place the cleaned results into the Central Database. This notebook combines both R and Python code. This first code chunk uses python to create a datframe to import in Elmer and then uses R to replace the table in the Central Database.
 
-```{r setup, include = FALSE}
+```{r write_to_db, include = FALSE}
 library(reticulate)
 library(odbc)
 
@@ -21,7 +21,7 @@ elmer_connection <- dbConnect(odbc::odbc(),
   trusted_connection = "yes"
   )
 
-# Clean up Data Types in the dataframe before it is pushed to teh database
+# Clean up Data Types in the dataframe before it is pushed to the database
 cols <- c('record_id','home_fips','year','value')
 worker_flow[cols] <- lapply(worker_flow[cols], as.integer)
 
@@ -30,6 +30,3 @@ dbWriteTable(elmer_connection, "lehd_otm_county_workers", worker_flow, overwrite
 dbDisconnect(elmer_connection)
 
 ```
-
-
- 
