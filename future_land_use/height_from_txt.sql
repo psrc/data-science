@@ -27,7 +27,7 @@ UPDATE dbo.flu_for_dc SET max_height_ft = ROUND((SELECT MAX(value_set) FROM (VAL
     WHERE max_height_ft IS NULL;
 
 --summarize by plan_type_id when plan_type_ids aren't specific to height (i.e., as happened prior to UrbanSim2 implementation)
-SELECT  plan_type_id, 
+SELECT  plan_type_id, max(max_du_ac) as max_du_ac, max(max_far) as max_far, max(max_coverage) as max_coverage,
         CASE 
             WHEN MIN(height_imputed)=0 THEN MAX((height_imputed-1) * max_height_ft * -1)
             WHEN MIN(height_imputed)=1 THEN MAX(max_height_ft)
@@ -35,5 +35,6 @@ SELECT  plan_type_id,
         AS max_height_ft,
         CASE 
             WHEN MIN(height_imputed)=0 THEN 0 ELSE 1 END 
-        AS imputed 
+        AS height_imputed
+INTO dbo.heights
 FROM dbo.flu_for_dc GROUP BY plan_type_id ORDER BY plan_type_id;
