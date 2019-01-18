@@ -15,11 +15,11 @@ GO
 
 CREATE TABLE transitmodes (mode_id int PRIMARY KEY NOT NULL);
 GO
-	INSERT INTO transitmodes(mode_id) VALUES (23),(24),(26),(27),(28),(31),(32),(33),(34),(36),(37),(41),(42),(47),(52);
+	INSERT INTO transitmodes(mode_id) VALUES (23),(24),(26),(27),(28),(31),(32),(41),(42),(47),(52);
 
 CREATE TABLE automodes (mode_id int PRIMARY KEY NOT NULL);
 GO
-	INSERT INTO automodes(mode_id) values (3),(4),(5),(6),(7),(8),(9),(10),(11),(12),(16),(17),(18),(21),(22),(23),(24),(26),(27),(28),(31),(32),(33),(34),(36),(37);
+	INSERT INTO automodes(mode_id) values (3),(4),(5),(6),(7),(8),(9),(10),(11),(12),(16),(17),(18),(21),(22),(33),(34),(36),(37);
 
 -- STEP 1. 	Load data from fixed format .csv files.  
 	--	Due to field import difficulties, the trip table is imported in two steps--a loosely typed table, then queried into a tightly typed table.
@@ -662,25 +662,24 @@ GO
 		UPDATE trip SET dest_county = zipwgs.county FROM trip JOIN dbo.zipcode_wgs AS zipwgs ON trip.dest_zip=zipwgs.zipcode;
 		GO
 
-	/*	UPDATE trip --fill missing zipcode THIS ISN'T UPDATING ANY FIELDS--DESPITE BEING THE SAME EPSG IT ISN'T EVALUATING RIGHT YET.
+		UPDATE trip --fill missing zipcode
 			SET trip.dest_zip = zipwgs.zipcode
 			FROM trip join dbo.zipcode_wgs as zipwgs ON [trip].[geom].STIntersects([zipwgs].[geom])=1
 			WHERE trip.dest_zip IS NULL;
 
-		UPDATE trip --fill missing city --NOT SELECTED YET
+	/*	UPDATE trip --fill missing city --NOT YET AVAILABLE
 			SET trip.dest_city = [ENTER CITY GEOGRAPHY HERE].City
 			FROM trip join [ENTER CITY GEOGRAPHY HERE] ON [trip].[geom].STIntersects([ENTER CITY GEOGRAPHY HERE].[geom])=1
 			WHERE trip.dest_city IS NULL;
-
-		UPDATE trip --fill missing county--NOT SELECTED YET
+	*/
+		UPDATE trip --fill missing county
 			SET trip.dest_county = zipwgs.county
 			FROM trip join dbo.zipcode_wgs as zipwgs ON [trip].[geom].STIntersects([zipwgs].[geom])=1
 			WHERE trip.dest_county IS NULL;
 
-	*** Create geographic check where assigned zip/county doesn't match the x,y.		
+	-- -- Create geographic check where assigned zip/county doesn't match the x,y.		
 
-	*/
-
+	
 		UPDATE trip --Create standard field for home trip
 			SET dest_is_home = 1
 			WHERE dest_name = 'HOME' 
@@ -735,15 +734,15 @@ GO
 						WHERE mode_1 NOT IN(SELECT mode_id FROM transitmodes) 
 							AND (mode_2 IN(SELECT mode_id FROM transitmodes) OR mode_3 IN(SELECT mode_id FROM transitmodes) OR mode_4 IN(SELECT mode_id FROM transitmodes));
 
-					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_egr ELSE mode_1 END, mode_4 = NULL -- transit trip egress A
+					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_4 THEN mode_egr ELSE mode_4 END, mode_4 = NULL -- transit trip egress A
 						WHERE mode_4 IS NOT NULL AND mode_4 NOT IN(SELECT mode_id FROM transitmodes)
 							AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes) OR mode_3 IN(SELECT mode_id FROM transitmodes));
 
-					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_egr ELSE mode_1 END, mode_3 = NULL -- transit trip egress B
+					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_3 THEN mode_egr ELSE mode_3 END, mode_3 = NULL -- transit trip egress B
 						WHERE mode_3 IS NOT NULL AND mode_4 IS NULL AND mode_3 NOT IN(SELECT mode_id FROM transitmodes) 
 							AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes));
 
-					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_egr ELSE mode_1 END, mode_2 = NULL -- transit trip egress C
+					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_2 THEN mode_egr ELSE mode_2 END, mode_2 = NULL -- transit trip egress C
 						WHERE mode_2 IS NOT NULL AND mode_3 IS NULL AND mode_2 NOT IN(SELECT mode_id FROM transitmodes) 
 							AND mode_1 IN(SELECT mode_id FROM transitmodes);
 
@@ -754,22 +753,21 @@ GO
 									mode_4 = NULL				
 						WHERE mode_1 IN(1,2) AND (mode_2 > 2 OR mode_3 > 2 OR mode_4 > 2);
 
-					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_egr ELSE mode_1 END, mode_4 = NULL -- non-transit trip egress A
+					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_4 THEN mode_egr ELSE mode_4 END, mode_4 = NULL -- non-transit trip egress A
 						WHERE mode_4 IN(1,2)
 							AND (mode_1 IN(SELECT mode_id FROM automodes) OR mode_2 IN(SELECT mode_id FROM automodes) OR mode_3 IN(SELECT mode_id FROM automodes));
 
-					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_egr ELSE mode_1 END, mode_3 = NULL -- non-transit trip egress B
+					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_3 THEN mode_egr ELSE mode_3 END, mode_3 = NULL -- non-transit trip egress B
 						WHERE mode_3 IN(1,2) AND mode_4 IS NULL
 							AND (mode_1 IN(SELECT mode_id FROM automodes) OR mode_2 IN(SELECT mode_id FROM automodes));
 
-					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_1 THEN mode_egr ELSE mode_1 END, mode_2 = NULL -- non-transit trip egress C
+					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_2 THEN mode_egr ELSE mode_2 END, mode_2 = NULL -- non-transit trip egress C
 						WHERE mode_2 IN(1,2) AND mode_3 IS NULL
 							AND mode_1 IN(SELECT mode_id FROM automodes);
 
 			EXEC sp_within_trip_access_egress;
 			EXEC sp_within_trip_access_egress;
 			EXEC sp_within_trip_access_egress;	
-			DROP PROCEDURE sp_within_trip_access_egress;
 
 	-- Revise access when reported as a separate trip; store the eliminated (access) trips
 
