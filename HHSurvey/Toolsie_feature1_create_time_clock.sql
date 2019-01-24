@@ -47,3 +47,8 @@ INSERT INTO
 VALUES
  (1,1,1),
  (2,1,2);
+
+
+
+
+select max(pernum) from mike.person

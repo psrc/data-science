@@ -14,11 +14,11 @@ import numpy as np
 import os 
 
 
-COUNTY = 'PIERCE'
-COUNTY_CODE = '53'
+COUNTY = 'KING'
+COUNTY_CODE = '35'
 DATA_PATH = r'J:\Projects\Permits\17Permit\database\working'
-my_tablename = COUNTY + '_' + COUNTY_CODE + '_17'
-file_name = COUNTY + '17_census.csv'
+my_tablename = COUNTY_CODE + '_' + COUNTY  + '_17'
+file_name = COUNTY + '17_merged_geo.csv'
 
 def read_data(DATA_PATH, COUNTY, file_name):
     my_file = pd.DataFrame.from_csv(os.path.join(DATA_PATH, COUNTY, file_name), sep=',', index_col=None)
