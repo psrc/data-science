@@ -16,7 +16,6 @@ import os
 
 
 
-
 COUNTY = 'KITSAP'
 COUNTY_CODE = '35'
    
@@ -84,11 +83,8 @@ def check_duplicated_table(table_names, my_tablename):
 def get_col_list(my_data):
     str_c = ''
     for c in final_data.columns.tolist()[0:]:
-        print c
         str_c = str_c + '[' + c + '],'   
     str_c = str_c[:-1] 
-    print ('data table column names are')
-    print (str_c)
     return str_c
 
     
@@ -125,7 +121,7 @@ def insert_data_into_SQL(my_data, str_c, my_tablename):
 ## get the data and prepare the data for SQL read
 if COUNTY is 'KING':
     JURIS_list = ['ALGONA2', 'BELLEVUE', 'BLACKDIAMOND2', 'BURIEN', 'CARNATION', 'CLYDEHILL', 'COVINGTON',
-                  'DESMOINES', 'ENUMCLAW', 'FEDERALWAY', 'ISSAQUAH2', 'KENMORE', 'KENT', 'KIRKLAND', 
+                  'DESMOINES', 'ENUMCLAW', 'FEDERALWAY', 'ISSAQUAH2', 'KENMORE','KENT', 'KIRKLAND', 
                   'LAKEFORESTPARK', 'MAPLEVALLEY', 'MEDINA', 'MERCERISLAND', 'NEWCASTLE', 'NORMANDYPARK',
                   'SAMMAMISH', 'SEATAC', 'SEATTLE2', 'SHORELINE', 'SNOQUALMIE', 'UNINCORPORATED', 
                   'WOODINVILLE2', 'YARROWPOINT']
@@ -185,8 +181,8 @@ for JURI in JURIS_list:
                  'SUFFIX varchar(255) NULL, ' + \
                  'UNIT_BLD varchar(255) NULL, ' + \
                  'ZIP varchar(255) NULL, ' + \
-                 'ISSUED datetime NULL, ' + \
-                 'FINALED datetime NULL, ' + \
+                 'ISSUED date NULL, ' + \
+                 'FINALED date NULL, ' + \
                  'STATUS varchar(255) NULL, ' + \
                  'TYPE INT NULL, ' + \
                  'PS INT NULL, ' + \
@@ -211,10 +207,10 @@ for JURI in JURIS_list:
                  'PROJYEAR INT NULL, ' + \
                  'CNTY INT NULL, ' + \
                  'MULTCNTY varchar(255) NULL, ' + \
-                 'PSRCID varchar(255) NULL, ' + \
-                 'PSRCIDXY varchar(255) NULL, ' + \
-                 'X_COORD varchar(255) NULL, ' + \
-                 'Y_COORD varchar(255) NULL, ' + \
+                 'PSRCID varchar(500) NULL, ' + \
+                 'PSRCIDXY varchar(500) NULL, ' + \
+                 'X_COORD float NULL, ' + \
+                 'Y_COORD float NULL, ' + \
                  'RUNTYPE INT NULL, '+\
                  'CHECK_DUPLICATED INT NULL, ' +\
                  'PIN_PARENT varchar(255) NULL, ' + \
