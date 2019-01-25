@@ -5,7 +5,9 @@ Created on Mon Jan 07 15:48:23 2019
 Task: This script is to upload one single county file to SQL. 
 This step was carried out after union all jurisdictions to one county table, 
 and attach geo information (census id and UGA, TAZ ID) to the table
+
 NOTE: BEFORE RUN THIS FILE, YOU HAVE TO MAKE SURE PIN IS IN INT TYPE. sometimes, it is in wreid object type and with e+9 value. 
+ISSUE / FINAL date is in the date formate (change it in excel)
 """
 
 import pandas as pd
@@ -14,10 +16,10 @@ import numpy as np
 import os 
 
 
-COUNTY = 'KING'
+COUNTY = 'KITSAP'
 COUNTY_CODE = '35'
 DATA_PATH = r'J:\Projects\Permits\17Permit\database\working'
-my_tablename = COUNTY_CODE + '_' + COUNTY  + '_17'
+my_tablename = COUNTY + '_' + COUNTY_CODE + '_17'
 file_name = COUNTY + '17_merged_geo.csv'
 
 def read_data(DATA_PATH, COUNTY, file_name):
@@ -135,8 +137,8 @@ sql_statement2 = '( ' + \
                  'SUFFIX varchar(255) NULL, ' + \
                  'UNIT_BLD varchar(255) NULL, ' + \
                  'ZIP varchar(255) NULL, ' + \
-                 'ISSUED datetime NULL, ' + \
-                 'FINALED datetime NULL, ' + \
+                 'ISSUED date NULL, ' + \
+                 'FINALED date NULL, ' + \
                  'STATUS varchar(255) NULL, ' + \
                  'TYPE INT NULL, ' + \
                  'PS INT NULL, ' + \
@@ -163,8 +165,8 @@ sql_statement2 = '( ' + \
                  'MULTCNTY varchar(255) NULL, ' + \
                  'PSRCID varchar(255) NULL, ' + \
                  'PSRCIDXY varchar(255) NULL, ' + \
-                 'X_COORD varchar(255) NULL, ' + \
-                 'Y_COORD varchar(255) NULL, ' + \
+                 'X_COORD float NULL, ' + \
+                 'Y_COORD float NULL, ' + \
                  'RUNTYPE INT NULL, '+\
                  'CHECK_DUPLICATED INT NULL, ' +\
                  'PIN_PARENT varchar(255) NULL, ' + \
