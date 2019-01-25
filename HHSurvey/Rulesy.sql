@@ -14,6 +14,7 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 DROP TABLE IF EXISTS household, person, tripx_raw, trip, transitmodes, automodes, eliminated_trips;
+DROP SEQUENCE IF EXISTS tripid_increment, workhorse_sequence;
 
 CREATE TABLE transitmodes (mode_id int PRIMARY KEY NOT NULL);
 GO
@@ -23,7 +24,7 @@ CREATE TABLE automodes (mode_id int PRIMARY KEY NOT NULL);
 GO
 	INSERT INTO automodes(mode_id) values (3),(4),(5),(6),(7),(8),(9),(10),(11),(12),(16),(17),(18),(21),(22),(33),(34),(36),(37);
 
--- STEP 1. 	Load data from fixed format .csv files.  
+/* STEP 1. 	Load data from fixed format .csv files.  */
 	--	Due to field import difficulties, the trip table is imported in two steps--a loosely typed table, then queried into a tightly typed table.
 
 		CREATE TABLE household (
@@ -634,23 +635,44 @@ GO
 			FROM dbo.tripx_raw
 			ORDER BY tripid;
 		GO
---		DROP TABLE tripx_raw;
---		GO
+	--		DROP TABLE tripx_raw;
+	--		GO
 
--- QC: tripnum must be sequential or later steps will fail. Check for this and raise error if otherwise
-IF EXISTS (
-	SELECT 'true'
-		FROM trip AS t1 JOIN trip AS t2 ON t1.personid=t2.personid
-		WHERE ((t2.tripnum - t1.tripnum) / 
-			(CASE WHEN datediff(second, t1.arrival_time_timestamp, t2.depart_time_timestamp) = 0 THEN 1 
-			ELSE datediff(second, t1.arrival_time_timestamp, t2.depart_time_timestamp) END)) < 0)
-BEGIN
-	PRINT 'Trip sequences exist out of order; correct and retry'
-END
-ELSE
-BEGIN --Run the rest of Rulesy
+		CREATE SEQUENCE tripid_increment AS int START WITH 1 INCREMENT BY 1 NO CYCLE;  -- Create sequence object to generate tripid for new records & add indices
+		ALTER TABLE trip ADD CONSTRAINT tripid_autonumber DEFAULT NEXT VALUE FOR tripid_increment FOR tripid;
+		CREATE INDEX person_idx ON trip (personid ASC);
+		CREATE INDEX tripnum_idx ON trip (tripnum ASC);
+		CREATE INDEX dest_purpose_idx ON trip (dest_purpose);
+		CREATE INDEX travelers_total_idx ON trip(travelers_total);
+		ALTER TABLE trip ADD CONSTRAINT PK_trip PRIMARY KEY CLUSTERED (tripid);
 
--- Step 2.  Fill missing fields & parse address fields
+	-- Create second sequence object for linking purposes
+		CREATE SEQUENCE workhorse_sequence AS int START WITH -2147483648 INCREMENT BY 1 NO CYCLE;
+		GO		
+
+	-- Tripnum must be sequential or later steps will fail. Create procedure and employ where required.
+		DROP PROCEDURE IF EXISTS tripnum_update;
+		GO
+		CREATE PROCEDURE tripnum_update AS
+		BEGIN
+		WITH tripnum_rev(tripid, personid, tripnum) AS
+		(SELECT tripid, personid, ROW_NUMBER() OVER(PARTITION BY personid ORDER BY depart_time_timestamp ASC) AS tripnum FROM trip)
+		UPDATE t
+			SET t.tripnum = tripnum_rev.tripnum
+			FROM trip AS t JOIN tripnum_rev ON t.tripid=tripnum_rev.tripid AND t.personid = tripnum_rev.personid
+			WHERE EXISTS 
+				(SELECT 1 FROM trip AS t_null WHERE t_null.personid = t.personid AND t_null.tripnum IS NULL)
+				OR EXISTS 
+					(SELECT 1 from trip AS t1 JOIN trip AS t2 ON t1.personid=t2.personid 
+						WHERE (t1.personid=t.personid AND ((t2.tripnum - t1.tripnum) / 
+						(CASE WHEN datediff(second, t1.arrival_time_timestamp, t2.depart_time_timestamp) = 0 THEN 1 
+						ELSE datediff(second, t1.arrival_time_timestamp, t2.depart_time_timestamp) END) < 0)))
+				OR EXISTS (SELECT 1 FROM trip AS t_skip WHERE t.personid = t_skip.personid GROUP BY personid HAVING count(tripnum)<>max(tripnum));
+		END
+		GO
+		EXEC tripnum_update;
+
+/* STEP 2.  Fill missing fields & parse address fields */
 
 		ALTER TABLE trip --additional destination address fields
 			ADD geom GEOMETRY NULL,
@@ -658,13 +680,8 @@ BEGIN --Run the rest of Rulesy
 				dest_city	varchar(25) NULL,
 				dest_zip	varchar(5) NULL,
 				dest_is_home bit NULL, 
-				dest_is_work bit NULL,
-				removal_code tinyint NULL;
-		ALTER TABLE trip ADD CONSTRAINT PK_trip PRIMARY KEY CLUSTERED (tripid);
+				dest_is_work bit NULL;
 		GO
-		CREATE INDEX person_idx ON trip (personid ASC);
-		CREATE INDEX tripnum_idx ON trip (tripnum ASC);
-		CREATE INDEX dest_purpose_idx ON trip (dest_purpose);
 				
 		UPDATE trip	SET geom = geometry::STPointFromText('POINT(' + CAST(dest_lat AS VARCHAR(20)) + ' ' + CAST(dest_lng AS VARCHAR(20)) + ')', 4326);
 		GO
@@ -681,20 +698,20 @@ BEGIN --Run the rest of Rulesy
 
 		UPDATE trip --fill missing zipcode
 			SET trip.dest_zip = zipwgs.zipcode
-			FROM trip join dbo.zipcode_wgs as zipwgs ON [trip].[geom].STIntersects([zipwgs].[geom])=1
+			FROM trip join dbo.zipcode_wgs as zipwgs ON trip.geom.STIntersects(zipwgs.geom)=1
 			WHERE trip.dest_zip IS NULL;
 
 	/*	UPDATE trip --fill missing city --NOT YET AVAILABLE
 			SET trip.dest_city = [ENTER CITY GEOGRAPHY HERE].City
-			FROM trip join [ENTER CITY GEOGRAPHY HERE] ON [trip].[geom].STIntersects([ENTER CITY GEOGRAPHY HERE].[geom])=1
+			FROM trip join [ENTER CITY GEOGRAPHY HERE] ON trip.geom.STIntersects([ENTER CITY GEOGRAPHY HERE].geom)=1
 			WHERE trip.dest_city IS NULL;
 	*/
 		UPDATE trip --fill missing county
 			SET trip.dest_county = zipwgs.county
-			FROM trip join dbo.zipcode_wgs as zipwgs ON [trip].[geom].STIntersects([zipwgs].[geom])=1
+			FROM trip join dbo.zipcode_wgs as zipwgs ON trip.geom.STIntersects(zipwgs.geom)=1
 			WHERE trip.dest_county IS NULL;
 
-	-- -- Create geographic check where assigned zip/county doesn't match the x,y.		
+	-- -- [Create geographic check where assigned zip/county doesn't match the x,y.]		
 
 	
 		UPDATE trip --Create standard field for home trip
@@ -716,7 +733,7 @@ BEGIN --Run the rest of Rulesy
 
 	--Reclassify purpose (used in later steps)
 
-			UPDATE trip --changes code to pickup/dropoff when passenger number changes, duration is under 20 minutes, and pickup/dropoff mentioned in dest_name
+			UPDATE trip --changes code to pickup/dropoff when passenger number changes, duration is under 30 minutes, and pickup/dropoff mentioned in dest_name
 				SET trip.dest_purpose = 9
 				FROM trip 
 					JOIN person ON trip.personid=person.personid 
@@ -724,7 +741,7 @@ BEGIN --Run the rest of Rulesy
 				WHERE dbo.RgxFind([trip].[dest_name],'(drop|pick)',1) = 1
 					AND trip.dest_purpose <> 9
 					AND trip.travelers_total <> next_trip.travelers_total
-					AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 40;
+					AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 30;
 
 		--Change 'Other' trip purpose when purpose is provided
 			UPDATE trip 	SET dest_purpose = 1	WHERE dest_purpose = 97 AND dest_is_home = 1;
@@ -735,61 +752,65 @@ BEGIN --Run the rest of Rulesy
 			UPDATE trip		SET dest_purpose = 51	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'dog',1) = 1 AND dbo.RgxFind(dest_name,'(walk|park)',1) = 1;
 			UPDATE trip		SET dest_purpose = 51	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'park',1) = 1 AND dbo.RgxFind(dest_name,'(parking|ride)',1) = 0;
 			UPDATE trip		SET dest_purpose = 54	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'church',1) = 1; 
-GO
+		GO
 
--- Step 3.	Trip linking
+/* STEP 3.	Trip linking */
 
 	-- Revise access and/or egress when reported as a mode within a trip; runs several times so stored procedure avoids duplicative code
 
-		DROP PROCEDURE IF EXISTS sp_within_trip_access_egress;
+		DROP PROCEDURE IF EXISTS within_trip_access_egress;
 		GO
 
-		CREATE PROCEDURE sp_within_trip_access_egress AS
+		CREATE PROCEDURE within_trip_access_egress AS
+		BEGIN
+			UPDATE trip SET mode_acc = CASE WHEN mode_acc > mode_1 THEN mode_acc ELSE mode_1 END, -- transit trip access
+							mode_1 = mode_2,
+							mode_2 = mode_3,
+							mode_3 = mode_4,
+							mode_4 = NULL			
+				WHERE mode_1 NOT IN(SELECT mode_id FROM transitmodes) 
+					AND (mode_2 IN(SELECT mode_id FROM transitmodes) OR mode_3 IN(SELECT mode_id FROM transitmodes) OR mode_4 IN(SELECT mode_id FROM transitmodes));
 
-					UPDATE trip SET mode_acc = CASE WHEN mode_acc > mode_1 THEN mode_acc ELSE mode_1 END, -- transit trip access
-									mode_1 = mode_2,
-									mode_2 = mode_3,
-									mode_3 = mode_4,
-									mode_4 = NULL			
-						WHERE mode_1 NOT IN(SELECT mode_id FROM transitmodes) 
-							AND (mode_2 IN(SELECT mode_id FROM transitmodes) OR mode_3 IN(SELECT mode_id FROM transitmodes) OR mode_4 IN(SELECT mode_id FROM transitmodes));
+			UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_4 THEN mode_egr ELSE mode_4 END, mode_4 = NULL -- transit trip egress A
+				WHERE mode_4 IS NOT NULL AND mode_4 NOT IN(SELECT mode_id FROM transitmodes)
+					AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes) OR mode_3 IN(SELECT mode_id FROM transitmodes));
 
-					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_4 THEN mode_egr ELSE mode_4 END, mode_4 = NULL -- transit trip egress A
-						WHERE mode_4 IS NOT NULL AND mode_4 NOT IN(SELECT mode_id FROM transitmodes)
-							AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes) OR mode_3 IN(SELECT mode_id FROM transitmodes));
+			UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_3 THEN mode_egr ELSE mode_3 END, mode_3 = NULL -- transit trip egress B
+				WHERE mode_3 IS NOT NULL AND mode_4 IS NULL AND mode_3 NOT IN(SELECT mode_id FROM transitmodes) 
+					AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes));
 
-					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_3 THEN mode_egr ELSE mode_3 END, mode_3 = NULL -- transit trip egress B
-						WHERE mode_3 IS NOT NULL AND mode_4 IS NULL AND mode_3 NOT IN(SELECT mode_id FROM transitmodes) 
-							AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes));
+			UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_2 THEN mode_egr ELSE mode_2 END, mode_2 = NULL -- transit trip egress C
+				WHERE mode_2 IS NOT NULL AND mode_3 IS NULL AND mode_2 NOT IN(SELECT mode_id FROM transitmodes) 
+					AND mode_1 IN(SELECT mode_id FROM transitmodes);
 
-					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_2 THEN mode_egr ELSE mode_2 END, mode_2 = NULL -- transit trip egress C
-						WHERE mode_2 IS NOT NULL AND mode_3 IS NULL AND mode_2 NOT IN(SELECT mode_id FROM transitmodes) 
-							AND mode_1 IN(SELECT mode_id FROM transitmodes);
+			UPDATE trip SET mode_acc = CASE WHEN mode_acc > mode_1 THEN mode_acc ELSE mode_1 END, -- non-transit trip access
+							mode_1 = mode_2,
+							mode_2 = mode_3,
+							mode_3 = mode_4,
+							mode_4 = NULL				
+				WHERE mode_1 IN(1,2) AND (mode_2 > 2 OR mode_3 > 2 OR mode_4 > 2);
 
-					UPDATE trip SET mode_acc = CASE WHEN mode_acc > mode_1 THEN mode_acc ELSE mode_1 END, -- non-transit trip access
-									mode_1 = mode_2,
-									mode_2 = mode_3,
-									mode_3 = mode_4,
-									mode_4 = NULL				
-						WHERE mode_1 IN(1,2) AND (mode_2 > 2 OR mode_3 > 2 OR mode_4 > 2);
+			UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_4 THEN mode_egr ELSE mode_4 END, mode_4 = NULL -- non-transit trip egress A
+				WHERE mode_4 IN(1,2) AND (mode_1 IN(SELECT mode_id FROM automodes) OR mode_2 IN(SELECT mode_id FROM automodes) OR mode_3 IN(SELECT mode_id FROM automodes));
 
-					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_4 THEN mode_egr ELSE mode_4 END, mode_4 = NULL -- non-transit trip egress A
-						WHERE mode_4 IN(1,2) AND (mode_1 IN(SELECT mode_id FROM automodes) OR mode_2 IN(SELECT mode_id FROM automodes) OR mode_3 IN(SELECT mode_id FROM automodes));
+			UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_3 THEN mode_egr ELSE mode_3 END, mode_3 = NULL -- non-transit trip egress B
+				WHERE mode_3 IN(1,2) AND (mode_1 IN(SELECT mode_id FROM automodes) OR mode_2 IN(SELECT mode_id FROM automodes)) AND mode_4 IS NULL;
 
-					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_3 THEN mode_egr ELSE mode_3 END, mode_3 = NULL -- non-transit trip egress B
-						WHERE mode_3 IN(1,2) AND (mode_1 IN(SELECT mode_id FROM automodes) OR mode_2 IN(SELECT mode_id FROM automodes)) AND mode_4 IS NULL;
-
-					UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_2 THEN mode_egr ELSE mode_2 END, mode_2 = NULL -- non-transit trip egress C
-						WHERE mode_2 IN(1,2) AND mode_1 IN(SELECT mode_id FROM automodes) AND mode_3 IS NULL;
+			UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_2 THEN mode_egr ELSE mode_2 END, mode_2 = NULL -- non-transit trip egress C
+				WHERE mode_2 IN(1,2) AND mode_1 IN(SELECT mode_id FROM automodes) AND mode_3 IS NULL;
+			END
 			GO
 
-			EXEC sp_within_trip_access_egress;
-			EXEC sp_within_trip_access_egress;
+		EXEC within_trip_access_egress;
+		EXEC within_trip_access_egress;
 
 	-- Revise access when reported as a separate trip; store the eliminated (access) trips
 
+		SELECT TOP 1 * into eliminated_trips FROM trip;  
+		DELETE FROM eliminated_trips; --creates empty table with structure identical to trips
+
 		UPDATE trip
-			SET trip.mode_acc 				= CASE WHEN mode_acc > prev_trip.mode_1 THEN mode_acc ELSE prev_trip.mode_1,
+			SET trip.mode_acc 				= CASE WHEN trip.mode_acc > prev_trip.mode_1 THEN trip.mode_acc ELSE prev_trip.mode_1 END,
 				trip.depart_time_timestamp 	= prev_trip.depart_time_timestamp,
 				trip.origin_name 			= prev_trip.origin_name,
 				trip.origin_address 		= prev_trip.origin_address,
@@ -804,22 +825,20 @@ GO
 				AND datediff(minute, prev_trip.arrival_time_timestamp, trip.depart_time_timestamp) < 20
 				AND (prev_trip.dest_purpose = trip.dest_purpose OR prev_trip.dest_purpose = 60);
 
-			UPDATE prev_trip 
-			SET prev_trip.removal_code = 1
+		DELETE prev_trip 
+			OUTPUT DELETED.* INTO eliminated_trips
 			FROM trip JOIN trip AS prev_trip ON trip.personid=prev_trip.personid AND trip.tripnum - 1 = prev_trip.tripnum
 			WHERE prev_trip.mode_1 IN(1,2) AND trip.mode_1 NOT IN(1,2) AND prev_trip.mode_2 IS NULL
 				AND prev_trip.dest_purpose <> 9 AND trip.travelers_hh = prev_trip.travelers_hh
 				AND datediff(minute, prev_trip.arrival_time_timestamp, trip.depart_time_timestamp) < 20
 				AND (prev_trip.dest_purpose = trip.dest_purpose OR prev_trip.dest_purpose = 60);							
-
-		SELECT * INTO eliminated_trips FROM trip WHERE removal_code = 1;
-		DELETE FROM trip WHERE removal_code = 1;
 		GO
-	
+		EXEC tripnum_update;
+		GO
 	-- Revise egress when reported as a separate trip; store the eliminated (egress) trips
 		
 		UPDATE trip
-			SET trip.mode_egr 				= CASE WHEN mode_egr > prev_trip.mode_1 THEN mode_egr ELSE prev_trip.mode_1,
+			SET trip.mode_egr 				= CASE WHEN trip.mode_egr > next_trip.mode_1 THEN trip.mode_egr ELSE next_trip.mode_1 END,
 				trip.arrival_time_timestamp = next_trip.arrival_time_timestamp,
 				trip.dest_name 				= next_trip.dest_name,
 				trip.dest_address 			= next_trip.dest_address,
@@ -834,25 +853,24 @@ GO
 				AND datediff(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 10
 				AND (trip.dest_purpose = next_trip.dest_purpose OR trip.dest_purpose = 60);		
 
-			UPDATE next_trip
-			SET	next_trip.removal_code = 2
+		DELETE next_trip
+			OUTPUT DELETED.* INTO eliminated_trips
 			FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum 
 			WHERE next_trip.mode_1 IN(1,2)  AND trip.mode_1 NOT IN(1,2)  AND next_trip.mode_2 IS NULL
 				AND next_trip.dest_purpose <> 9 AND trip.travelers_hh = next_trip.travelers_hh
 				AND datediff(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 10
 				AND (trip.dest_purpose = next_trip.dest_purpose OR trip.dest_purpose = 60);	
-
-		INSERT INTO eliminated_trips SELECT * FROM trip WHERE removal_code = 2;
-		DELETE FROM trip WHERE removal_code = 2;
-
+		GO
+		EXEC tripnum_update;
+		GO
 	-- Link remaining transit trip components; store the eliminated trips
 
 
 
 
--- Step 4. Insert missing passenger trips
+/* STEP 4. Insert missing passenger trips */
 
-    WITH list_passenger_trips(passengerid, depart_time_timestamp, arrival_time_timestamp) AS --use CTE for Union query to create all passenger trips
+    WITH list_passenger_trips AS --use CTE for Union query to create all passenger trips
         (SELECT             hhmember1 as passengerid, * FROM trip WHERE hhmember1 IS NOT NULL AND hhmember1 <> personid
         UNION ALL SELECT    hhmember2 as passengerid, * FROM trip WHERE hhmember2 IS NOT NULL AND hhmember2 <> personid
         UNION ALL SELECT    hhmember3 as passengerid, * FROM trip WHERE hhmember3 IS NOT NULL AND hhmember3 <> personid
@@ -862,26 +880,38 @@ GO
         UNION ALL SELECT    hhmember7 as passengerid, * FROM trip WHERE hhmember7 IS NOT NULL AND hhmember7 <> personid
         UNION ALL SELECT    hhmember8 as passengerid, * FROM trip WHERE hhmember8 IS NOT NULL AND hhmember8 <> personid
         UNION ALL SELECT    hhmember9 as passengerid, * FROM trip WHERE hhmember9 IS NOT NULL AND hhmember9 <> personid)
-    INSERT INTO trips  --should specify field list here
-	SELECT t1.hhid, t1.passengerid AS personid, -- select fields necessary for new trip records; could list in the CTE above for better performance, but less concise
-		XXXX AS tripid,
-		XXXX AS tripnum,
-		depart_time_timestamp, 
-		arrival_time_timestamp,
-		origin_name,
-		origin_address,
-		origin_lat, . . .
-	FROM list_passenger_trips as t1 --keep only those when the time midpoint of the CTE trip doesn't intersect any trip by the same person (whether they reported the other hhmembers or not)
-        LEFT JOIN trip as t2 ON t1.passengerid = t2.personid AND 
-			DATEADD(SECOND, (DATEDIFF(SECOND, t2.depart_time_timestamp, t2.arrival_time_timestamp)/2), t2.depart_time_timestamp) 
-            BETWEEN t1.depart_time_timestamp AND t1.arrival_time_timestamp
-        WHERE t2.personid IS NULL;
+    INSERT INTO trip(hhid, personid, 
+		depart_time_timestamp, arrival_time_timestamp,
+		dest_name, dest_address, dest_lat, dest_lng,
+		trip_path_distance, google_duration, reported_duration,
+		hhmember1, hhmember2, hhmember3, hhmember4, hhmember5, hhmember6, hhmember7, hhmember8, hhmember9, hhmember_none, travelers_hh, travelers_nonhh, travelers_total,
+		mode_1, mode_2, mode_3, mode_4, change_vehicles, transit_system_1, transit_system_2, transit_system_3,
+		park_ride_area_start, park_ride_area_end, park_ride_lot_start, park_ride_lot_end, park, park_type, park_pay,
+		toll, toll_pay, taxi_type, taxi_pay, bus_type, bus_pay, bus_cost_dk, ferry_type, ferry_pay, ferry_cost_dk, rail_type, rail_pay, rail_cost_dk, air_type, air_pay, airfare_cost_dk,
+		mode_acc, mode_egr)
+	SELECT -- select fields necessary for new trip records
+		t.hhid, t.passengerid AS personid, 
+		t.depart_time_timestamp, t.arrival_time_timestamp,
+		t.dest_name, t.dest_address, t.dest_lat, t.dest_lng,
+		t.trip_path_distance, t.google_duration, t.reported_duration,
+		t.hhmember1, t.hhmember2, t.hhmember3, t.hhmember4, t.hhmember5, t.hhmember6, t.hhmember7, t.hhmember8, t.hhmember9, t.hhmember_none, t.travelers_hh, t.travelers_nonhh, t.travelers_total,
+		t.mode_1, t.mode_2, t.mode_3, t.mode_4, t.change_vehicles, t.transit_system_1, t.transit_system_2, t.transit_system_3,
+		t.park_ride_area_start, t.park_ride_area_end, t.park_ride_lot_start, t.park_ride_lot_end, t.park, t.park_type, t.park_pay,
+		t.toll, t.toll_pay, t.taxi_type, t.taxi_pay, t.bus_type, t.bus_pay, t.bus_cost_dk, t.ferry_type, t.ferry_pay, t.ferry_cost_dk, t.rail_type, t.rail_pay, t.rail_cost_dk, t.air_type, t.air_pay, t.airfare_cost_dk,
+		t.mode_acc, t.mode_egr 
+	FROM list_passenger_trips as t --keep only those when the time midpoint of the CTE trip doesn't intersect any trip by the same person (whether they reported the other hhmembers or not)
+        LEFT JOIN trip as compare_t ON t.passengerid = compare_t.personid AND 
+			DATEADD(Second, (DATEDIFF(Second, compare_t.depart_time_timestamp, compare_t.arrival_time_timestamp)/2), compare_t.depart_time_timestamp) 
+            BETWEEN t.depart_time_timestamp AND t.arrival_time_timestamp
+        WHERE compare_t.personid IS NULL;
 
-	EXEC sp_within_trip_access_egress;  -- rerun access-egress consolidation on the newly linked and inserted trips
-	EXEC sp_within_trip_access_egress;
+		EXEC sp_within_trip_access_egress;  -- rerun access-egress consolidation on the newly linked and inserted trips
+		EXEC sp_within_trip_access_egress;
+		GO
+		EXEC tripnum_update;
+		GO
 
-
--- Step 5a. Flag inconsistencies
+/* STEP 5a. Flag inconsistencies */
 
 		DROP TABLE IF EXISTS trip_error_flags;
 		CREATE TABLE trip_error_flags(
@@ -890,18 +920,23 @@ GO
 			tripnum int not null,
 			error_flag varchar(100),
 			rulesy_fixed varchar(10) default 'no'
-			PRIMARY KEY (personid, tripnum, error_flag)
+			PRIMARY KEY (personid, tripid, error_flag)
 		);
 		GO
-
 
 	-- Logic Checks
 
 		WITH error_flag_compilation(tripid, personid, tripnum, error_flag) AS
-				(SELECT 	t1.tripid, t1.personid, t1.tripnum, 		'underage driver' AS error_flag
+			(SELECT t1.tripid, t1.personid, t1.tripnum, 				'underage driver' AS error_flag
 					FROM hhts_agecodes AS age JOIN person AS p ON age.agecode = p.age
 						JOIN trip AS t1 ON p.personid = t1.personid
 					WHERE t1.driver = 1 AND p.age BETWEEN 1 AND 3
+			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum, 	'unlicensed driver' as error_flag
+				FROM trip JOIN person AS p ON p.personid=trip.personid
+				WHERE p.license = 3 AND trip.driver=1
+			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum, 	'non-worker reporting work trip' as error_flag
+				FROM trip JOIN person AS p ON p.personid=trip.personid
+				WHERE p.worker = 0 AND trip.dest_purpose in(10,11,14)
 			UNION ALL SELECT tripid, personid, tripnum, 				'speed unreasonably high' as error_flag
 				FROM trip 									
 				WHERE 	(mode_1 = 1 AND speed_mph > 20)
@@ -921,79 +956,52 @@ GO
 				WHERE trip.dest_purpose = 6 
 					AND trip.tripnum + 1 = next_trip.tripnum
 					AND ((person.student NOT IN(2,3,4))
-						OR (DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 20))
-			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum, 	'unlicensed driver' as error_flag
-				FROM trip JOIN person AS p ON p.personid=trip.personid
-				WHERE p.license = 3 AND trip.driver=1
-			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum, 	'non-worker reporting work trip' as error_flag
-				FROM trip JOIN person AS p ON p.personid=trip.personid
-				WHERE p.worker = 0 AND trip.dest_purpose in(10,11,14))
+						OR (DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 20)))
 		INSERT INTO trip_error_flags (tripid, personid, tripnum, error_flag)
 			SELECT tripid, personid, tripnum, error_flag FROM error_flag_compilation;
-GO
--- Step 5b. Correct for known error patterns
+		GO
 
-	--a. Inconsistent coding of 'return home' as trip purpose
-		UPDATE t1 --marks subsequent correction
-			SET t1.rulesy_fixed ='yes'
-			FROM trip_error_flags as t1 join trip on t1.personid=trip.personid AND t1.tripnum=trip.tripnum
-				JOIN trip AS prev_trip on trip.hhid=prev_trip.hhid AND trip.personid=prev_trip.personid AND trip.tripnum - 1 = prev_trip.tripnum
-			WHERE trip.dest_purpose <> 1 and trip.dest_is_home = 1 AND t1.error_flag = 'non-home trip purpose, destination home'
-				AND trip.dest_purpose=prev_trip.dest_purpose;
+/* STEP 5b. Correct for known error patterns */
+
+		DROP TABLE IF EXISTS fixed;
+		CREATE TABLE fixed(tripid bigint, personid int, error_flag varchar(100));
+		GO
 
 		UPDATE trip --revises purpose field for return portion of a single stop loop trip 
-			SET trip.dest_purpose = 1 
+			SET trip.dest_purpose = 1
+			OUTPUT INSERTED.tripid, INSERTED.personid, 'non-home trip purpose, destination home' AS error_flag INTO fixed 
 			FROM trip 
 				JOIN trip AS prev_trip on trip.personid=prev_trip.personid AND trip.tripnum - 1 = prev_trip.tripnum
 			WHERE trip.dest_purpose <> 1 and trip.dest_is_home = 1
 				AND trip.dest_purpose=prev_trip.dest_purpose;
-GO
-	--b. Drop-off and pick-up trips coded incorrectly as school trips (or other codes)
-		UPDATE t1 --marks subsequent correction
-			SET t1.rulesy_fixed ='yes'
-			FROM trip_error_flags as t1 
-				JOIN trip ON t1.personid=trip.personid AND t1.tripnum=trip.tripnum 
-				JOIN person ON trip.hhid=person.hhid AND trip.personid=person.personid 
-				JOIN trip as next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
-			WHERE trip.dest_purpose = 6 AND t1.error_flag = 'suspected drop-off or pick-up coded as school trip'
-				AND trip.travelers_total <> next_trip.travelers_total
-				AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 40;
 
-		UPDATE trip --changes purpose code from school to pickup/dropoff when passenger number changes and duration is under 40 minutes
+		UPDATE trip --changes purpose code from school to pickup/dropoff when passenger number changes and duration is under 30 minutes
 			SET trip.dest_purpose = 9
+			OUTPUT INSERTED.tripid, INSERTED.personid, 'suspected drop-off or pick-up coded as school trip' AS error_flag INTO fixed
 			FROM trip 
 				JOIN person ON trip.personid=person.personid 
 				JOIN trip as next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
 			WHERE trip.dest_purpose = 6
 				AND trip.travelers_total <> next_trip.travelers_total
-				AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 40;
+				AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 40;
 		
-		UPDATE t1 --marks subsequent correction
-			SET t1.rulesy_fixed ='yes'
-			FROM trip_error_flags as t1 
-				JOIN trip ON t1.personid=trip.personid AND t1.tripnum=trip.tripnum 
-				JOIN person ON trip.hhid=person.hhid AND trip.personid=person.personid 
-				JOIN trip as next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
-			WHERE trip.dest_purpose = 6
-				AND trip.travelers_total <> next_trip.travelers_total
-				AND dbo.RgxFind(trip.dest_name,'(school|care)',1) = 1
-				AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) Between 40 and 240;	
-
-		UPDATE trip --changes code to 'family activity' when passenger number changes and duration is from 40mins to 4hrs
+		UPDATE trip --changes code to 'family activity' when passenger number changes and duration is from 30mins to 4hrs
 			SET trip.dest_purpose = 56
+			OUTPUT INSERTED.tripid, INSERTED.personid, 'suspected drop-off or pick-up coded as school trip' AS error_flag INTO fixed
 			FROM trip 
 				JOIN person ON trip.personid=person.personid 
 				JOIN trip as next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
 			WHERE trip.dest_purpose = 6
 				AND trip.travelers_total <> next_trip.travelers_total
 				AND dbo.RgxFind(trip.dest_name,'(school|care)',1) = 1
-				AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) Between 40 and 240;				
-GO
+				AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) Between 30 and 240;
 
-	/*-- Impute:
-		-- Access/egress where missing
+		UPDATE tef	SET rulesy_fixed=1
+			FROM trip_error_flags AS tef JOIN fixed AS f ON tef.tripid=f.tripid AND tef.personid=f.personid AND tef.error_flag=f.error_flag;
+		DROP TABLE fixed;	 
+		GO
 
-	*/	
+			/*-- Impute:
+				-- Access/egress where missing
 
-
-	END
+			*/	
