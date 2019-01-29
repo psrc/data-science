@@ -1,8 +1,9 @@
 -- Queries to change FLU coverage and height from text to numeric fields
 
-ALTER TABLE ADD max_coverage decimal(4,3),
-            ADD max_height_ft tinyint,
-            add height_imputed bit NOT NULL DEFAULT 0;
+ALTER TABLE dbo.flu_for_dc ADD 
+            max_coverage decimal(4,3),
+            max_height_ft tinyint,
+            height_imputed bit NOT NULL DEFAULT 0;
 
 UPDATE dbo.flu_for_dc SET maxcoverag = NULL WHERE maxcoverag IN('0','NA');
 
@@ -38,3 +39,4 @@ SELECT  plan_type_id, max(max_du_ac) as max_du_ac, max(max_far) as max_far, max(
         AS height_imputed
 INTO dbo.heights
 FROM dbo.flu_for_dc GROUP BY plan_type_id ORDER BY plan_type_id;
+drop table dbo.heights;
