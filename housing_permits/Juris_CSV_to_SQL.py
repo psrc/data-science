@@ -16,8 +16,8 @@ import os
 
 
 
-COUNTY = 'PIERCE'
-COUNTY_CODE = '53'
+COUNTY = 'KITSAP'
+COUNTY_CODE = '35'
    
 
 def read_data(DATA_PATH, COUNTY, COUNTY_CODE, JURI):
