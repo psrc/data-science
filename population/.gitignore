@@ -1,0 +1,6 @@
+# File to ignore in repo
+
+# don't want to checkin the results of the markdown rendering:
+*.html
+*.xlsx
+shapefiles/
