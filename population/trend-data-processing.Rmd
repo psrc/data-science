@@ -1,0 +1,205 @@
+---
+title: "National Geographies to Elmer"
+output: html_notebook
+---
+
+This code imports the US Federal Information Processing Standard (FIPS) codes into the central database.
+These codes allow for joining to a variety of data sets for spatial display, processing and summarization.
+
+```{r Lookups_to_SQL, include=FALSE}
+library(data.table)
+library(tidyverse)
+library(odbc)
+library(DBI)
+library(openxlsx)
+library(foreign)
+library(reticulate)
+
+data_dir <- getwd()
+shapefile_dir <- paste0(data_dir,"/shapefiles")
+
+# SQL Database Connection settings
+elmer_connection <- dbConnect(odbc::odbc(),
+  driver = "SQL Server",
+  server = "sql2016\\DSADEV",
+  database = "Sandbox",
+  trusted_connection = "yes"
+  )
+
+tablename <- "fips_codes"
+
+# Create data.tables from the various national coverages that we have shapefiles for
+states <- read.dbf(paste0(shapefile_dir,"/cb_2017_us_state_500k.dbf")) %>% as.data.table
+counties <- read.dbf(paste0(shapefile_dir,"/cb_2017_us_county_500k.dbf")) %>% as.data.table
+cbsa <- read.dbf(paste0(shapefile_dir,"/cb_2017_us_cbsa_500k.dbf")) %>% as.data.table
+urban_area <- read.dbf(paste0(shapefile_dir,"/cb_2017_us_ua10_500k.dbf")) %>% as.data.table
+
+# Clean up unique datatables for provide common attribute names
+final_column_order <- c('geoid','name','state','category','csa')
+
+# States
+states <- states[,c('GEOID','NAME','STUSPS')]
+updated_column_names <- c('geoid','name','state')
+setnames(states, updated_column_names)
+states <- states[, category := 'state']
+states <- states[, csa := 0]
+setcolorder(states, final_column_order)
+
+# Create a State FIPS Code to Abbreviation Lookup
+state_lookup <- states[,c('geoid','state')]
+
+# Counties
+counties <- counties[,c('GEOID','NAME','STATEFP')]
+counties <- merge(counties, state_lookup, by.x = "STATEFP", by.y = "geoid")
+counties <- counties[,c('GEOID','NAME','state')]
+updated_column_names <- c('geoid','name','state')
+setnames(counties, updated_column_names)
+counties <- counties[, category := 'county']
+counties <- counties[, csa := 0]
+setcolorder(counties, final_column_order)
+
+# Statistical Areas
+cbsa <- cbsa[,c('GEOID','NAME','CSAFP')]
+cbsa[,c('CSAFP')] <- cbsa[, lapply(.SD, as.numeric), .SDcols = c('CSAFP')]
+cbsa[is.na(cbsa)] <- 0
+updated_column_names <- c('geoid','name','csa')
+setnames(cbsa, updated_column_names)
+cbsa <- cbsa[, category := 'statistical area']
+cbsa$state <- gsub("^.*?, ","",cbsa$name)
+setcolorder(cbsa, final_column_order)
+
+# Urban Areas
+urban_area <- urban_area[,c('GEOID10','NAME10')]
+updated_column_names <- c('geoid','name')
+setnames(urban_area, updated_column_names)
+urban_area <- urban_area[, category := 'urban area']
+urban_area <- urban_area[, csa := 0]
+urban_area$state <- gsub("^.*?, ","",urban_area$name)
+setcolorder(urban_area, final_column_order)
+
+# Merge the various data.tables into a final clean table for inclusion in the central db
+final_dt <- rbindlist(list(states, counties, cbsa, urban_area))
+char_columns <- c('geoid','name','state','category')
+final_dt[,char_columns] <- final_dt[, lapply(.SD, as.character), .SDcols = char_columns]
+final_dt <- final_dt[, record_id := .I]
+final_column_order <- c('record_id','geoid','name','state','category','csa')
+setcolorder(final_dt, final_column_order)
+
+# Now write data to the central database
+dbWriteTable(elmer_connection, tablename, final_dt, overwrite=TRUE)
+
+# Values for population download
+source_python("census_population.py")
+final_column_order <- c('record_id','geoid','year','value')
+int_columns <- c('year','value')
+data_years <- c('2010','2011','2012','2013','2014','2015','2016','2017')
+
+# Statewide Population to Elmer
+state_population <- create_population_table('state',data_years)
+setDT(state_population)
+state_population <- state_population[, record_id := .I]
+setcolorder(state_population, final_column_order)
+state_population[,int_columns] <- state_population[, lapply(.SD, as.integer), .SDcols = int_columns]
+dbWriteTable(elmer_connection, 'national_statewide_population', state_population, overwrite=TRUE)
+
+# County Population to Elmer
+county_population <- create_population_table('county',data_years)
+setDT(county_population)
+county_population <- county_population[, record_id := .I]
+setcolorder(county_population, final_column_order)
+county_population[,int_columns] <- county_population[, lapply(.SD, as.integer), .SDcols = int_columns]
+dbWriteTable(elmer_connection, 'national_county_population', county_population, overwrite=TRUE)
+
+# MSA Population to Elmer
+msa_population <- create_population_table('metropolitan statistical area/micropolitan statistical area',data_years)
+setDT(msa_population)
+msa_population <- msa_population[, record_id := .I]
+setcolorder(msa_population, final_column_order)
+msa_population[,int_columns] <- msa_population[, lapply(.SD, as.integer), .SDcols = int_columns]
+dbWriteTable(elmer_connection, 'national_msa_population', msa_population, overwrite=TRUE)
+
+# CSA Population to Elmer
+csa_population <- create_population_table('combined statistical area',data_years)
+setDT(csa_population)
+csa_population <- csa_population[, record_id := .I]
+setcolorder(csa_population, final_column_order)
+csa_population[,int_columns] <- csa_population[, lapply(.SD, as.integer), .SDcols = int_columns]
+dbWriteTable(elmer_connection, 'national_csa_population', csa_population, overwrite=TRUE)
+
+# Urban Area Population to Elmer
+ua_population <- create_population_table('urban area',data_years)
+setDT(ua_population)
+ua_population <- ua_population[, record_id := .I]
+setcolorder(ua_population, final_column_order)
+ua_population[,int_columns] <- ua_population[, lapply(.SD, as.integer), .SDcols = int_columns]
+dbWriteTable(elmer_connection, 'national_urban_area_population', ua_population, overwrite=TRUE)
+
+dbDisconnect(elmer_connection) 
+```
+
+```
+```{r ofm_population_data, include=FALSE}
+library(tidyverse)
+library(readxl)
+library(data.table)
+library(lubridate)
+library(odbc)
+library(DBI)
+
+ofm_url <- 'https://www.ofm.wa.gov/sites/default/files/public/legacy/pop/smallarea/data/xlsx/saep_bg10.xlsx'
+
+# Details from OFM file including a list of tabs in the spreadsheet to iterate over
+download.file(ofm_url, "working.xlsx", quiet = FALSE, mode = "wb")
+ofm_pop_file <- paste0(getwd(),"/working.xlsx")
+
+list_of_tabs <- excel_sheets(ofm_pop_file)
+final_dt <- NULL
+
+# Create a long form data.table of all OFM variables for inlcusion in Central DB
+for (tabs in list_of_tabs) {
+  ofm_pop_bg <- read_excel(ofm_pop_file,sheet = tabs, skip = 10)
+  setDT(ofm_pop_bg)
+  ofm_pop_bg <- na.omit(ofm_pop_bg)
+
+  # Remove the columns that have deltas calculated
+  cols_delta <- "([2][0-9]{3} to [2][0-9]{3})"
+  cols_to_remove <- str_subset(colnames(ofm_pop_bg), cols_delta)
+  ofm_pop_bg <- ofm_pop_bg[, (cols_to_remove):=NULL]
+
+  # Drop Columns that are not the BlockGroup or Yearly Results
+  cols_year <- "([2][0-9]{3})"
+  cols_to_keep <- str_subset(colnames(ofm_pop_bg), cols_year)
+  cols_to_keep <- c("Census Block Group Code Complete",cols_to_keep)
+  ofm_pop_bg <- ofm_pop_bg[, ..cols_to_keep]
+
+  # Now Rename columns to GEOID and Year before the data is transformed to long form
+  cols_year <- "([2][0-9]{3})"
+  updated_names <- str_subset(colnames(ofm_pop_bg), cols_year)
+  updated_names <- str_sub(updated_names, -4, -1)
+  updated_names <- c("geoid",updated_names)
+  setnames(ofm_pop_bg,updated_names)
+
+  working_dt <- melt(ofm_pop_bg, id.vars = c("geoid"), measure.vars = str_subset(colnames(ofm_pop_bg), cols_year))
+  working_dt$date <- paste0("04/01/", working_dt$variable)
+  working_dt <- working_dt[, date:=as.Date(date,"%d/%m/%Y")]
+  working_dt$attribute <- tabs
+  working_dt <- working_dt[, variable:=NULL]
+
+  ifelse(is.null(final_dt), final_dt <- working_dt, final_dt <- rbindlist(list(final_dt, working_dt)))
+}
+
+# SQL Database Connection settings
+elmer_connection <- dbConnect(odbc::odbc(),
+  driver = "SQL Server",
+  server = "sql2016\\DSADEV",
+  database = "Sandbox",
+  trusted_connection = "yes"
+  )
+
+dbWriteTable(elmer_connection, 'ofm_blockgroup_data', final_dt, overwrite=TRUE)
+dbDisconnect(elmer_connection) 
+
+# Now delete the temporary OFM downloaded file
+file.remove(ofm_pop_file)
+
+```
