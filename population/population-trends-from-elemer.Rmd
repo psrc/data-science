@@ -1,0 +1,161 @@
+---
+title: "National Population Data from Elmer"
+output:
+  html_document:
+    df_print: paged
+---
+
+# Population
+Population trends for cities, counties, states, urban areas and everything in between.
+
+```{r setup, include=FALSE}
+library(data.table)
+library(tidyverse)
+library(odbc)
+library(DBI)
+library(openxlsx)
+library(foreign)
+library(reticulate)
+library(ggplot2)
+library(plotly)
+library(leaflet)
+library(sp)
+library(rgdal)
+library(scales)
+library(knitr)
+
+data_dir <- getwd()
+
+# Function to Create a data.table for mapping in Leaflet
+process_datatble_for_mapping <- function(geography_table, shapefile_dir, geography_layer, geography_category, field_to_join) {
+
+  # Columns for clean table
+  final_columns = c('geoid', 'name','value','year')
+  
+  # Connect to Central Database and pull desired tables
+  elmer_connection <- dbConnect(odbc::odbc(),
+    driver = "SQL Server",
+    server = "sql2016\\DSADEV",
+    database = "Sandbox",
+    trusted_connection = "yes"
+    )
+  
+  fips <- dbReadTable(elmer_connection, 'fips_codes')
+  population <- dbReadTable(elmer_connection, geography_table)
+  dbDisconnect(elmer_connection) 
+  
+  # Make data.tables
+  setDT(fips)
+  setDT(population)
+
+  # Trim fips codes to category of interest and merge
+  fips <- fips[category == geography_category]
+  population <- merge(population, fips, by = "geoid")
+  population <- population[,..final_columns]
+
+  # Determine Current and Previous Year Data and create a data.table to merge with the shapefile
+  current_year <- max(population$year)
+  previous_year <- current_year - 1
+  population <- population[year>=previous_year]
+  population <- dcast(population, geoid + name ~ year)
+  setnames(population,c('geoid','name','previous_year','current_year'))
+
+  # Now merge the population data with the national shapefile
+  working.shape <- readOGR(dsn=shapefile_dir,layer=geography_layer)
+  working_pop <- sp::merge(working.shape, population, by.x = field_to_join, by.y = "geoid")
+}
+
+# Function to Create a Map from a data.table in leaflet
+create_population_map <- function(working_table, working_colors, map_title, last_year, this_year, geography_category) {
+
+  # Set bins for use in map based on range or attribute
+  rng <- range(working_table$current_year)
+  max_bin <- max(abs(rng))
+  round_to <- 10^floor(log10(max_bin))
+  max_bin <- ceiling(max_bin/round_to)*round_to
+  breaks <- (sqrt(max_bin)*c(0.1, 0.2,0.4, 0.6, 0.8, 1))^2
+
+  bins <- c(0, breaks)
+  pal <- colorBin(working_colors, domain = working_table$current_year, bins = bins)
+
+  geography_label = paste0(geography_category,": ")
+  previous_label = paste0(last_year,": ")
+  current_label = paste0(this_year,": ")
+
+    # Create a label format for the interactive map
+  labels <- paste0("<b>",geography_label, "</b>",working_table$name,
+                  "<b> <br>",previous_label, "</b>", prettyNum(round(working_table$previous_year, -1), big.mark = ","),
+                  "<b> <br>",current_label, "</b>", prettyNum(round(working_table$current_year, -1), big.mark = ",")) %>% lapply(htmltools::HTML)
+
+  working_map <- leaflet(data = working_table) %>% 
+    setView(-100,35,zoom=4) %>%
+    addTiles() %>%
+    addPolygons(fillColor = pal(working_table$current_year),
+                weight = 2,
+                opacity = 1,
+                color = "white",
+                dashArray = "3",
+                fillOpacity = 0.7,
+                highlight = highlightOptions(
+                  weight =5,
+                  color = "76787A",
+                  dashArray ="",
+                  fillOpacity = 0.7,
+                  bringToFront = TRUE),
+                label = labels,
+                labelOptions = labelOptions(
+                  style = list("font-weight" = "normal", padding = "3px 8px"),
+                  textsize = "15px",
+                  direction = "auto"))%>%
+    addLegend("bottomright", pal=pal, values = working_table$current_year,
+              title = map_title,
+              labFormat = labelFormat(),
+              opacity = 1)
+
+  working_map
+}
+
+```
+
+## Statewide Population
+
+```{r process_geographies, include= FALSE}
+
+states_to_map <- process_datatble_for_mapping('national_statewide_population', paste0(data_dir,"/shapefiles"), 'cb_2017_us_state_500k', 'state', 'GEOID')
+
+counties_to_map <- process_datatble_for_mapping('national_county_population', paste0(data_dir,"/shapefiles"), 'cb_2017_us_county_500k', 'county', 'GEOID')
+
+urbanarea_to_map <- process_datatble_for_mapping('national_urban_area_population', paste0(data_dir,"/shapefiles"), 'cb_2017_us_ua10_500k', 'urban area', 'GEOID10')
+
+```
+
+Population map for all states in the US.
+
+```{r create_state_map, echo = FALSE}
+
+my_map <- create_population_map(states_to_map,'Blues','Statewide Population', '2016', '2017', 'State')
+my_map
+
+```
+
+## County Population
+
+Population map for all counties in the US.
+
+```{r create_county_map, echo = FALSE}
+
+my_map <- create_population_map(counties_to_map,'Reds','County Population', '2016', '2017', 'County')
+my_map
+
+```
+
+## Urban Area Population
+
+Population map for all Urban Areas in the US.
+
+```{r create_ua_map, echo = FALSE}
+
+my_map <- create_population_map(urbanarea_to_map,'Oranges','Urban Area Population', '2016', '2017', 'Urban Area')
+my_map
+
+```
