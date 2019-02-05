@@ -5,8 +5,9 @@ library(tidyverse)
 
 
 # create_cross_tab_with_weights
-cross_tab <- function(table, var1, var2, wt_field, type) {
+cross_tab <- function(table, var1, var2, wt_field, type = c("total", "mean")) {
   z <- 1.96
+  
   print(var1)
   print(var2)
   print(wt_field)
@@ -27,7 +28,9 @@ cross_tab <- function(table, var1, var2, wt_field, type) {
     expanded[, ("in") := (share*(1-share))/hhid][, MOE := z*sqrt(get("in"))][, N_HH := hhid]
     crosstab <- merge(raw, expanded, by = cols)
     # crosstab output column names will differ from python output
-    crosstab <- dcast.data.table(crosstab, get(eval(var1)) ~ get(eval(var2)), value.var = c('sample_count', 'estimate', 'share', 'MOE', 'N_HH'))
+    crosstab <- dcast.data.table(crosstab, 
+                                 get(eval(var1)) ~ get(eval(var2)), 
+                                 value.var = c('sample_count', 'estimate', 'share', 'MOE', 'N_HH'))
   } else if (type == "mean") {
     tbl <- table[, (var2) := as.numeric(get(eval(var2)))][!is.na(get(eval(var2))), ][get(eval(var2)) != 0, ][get(eval(var2)) < 100, ]
     tbl[, weighted_total := get(eval(wt_field))*get(eval(var2))]
@@ -45,8 +48,9 @@ cross_tab <- function(table, var1, var2, wt_field, type) {
   return(crosstab)
 }
 
-simple_table <- function(table, var, wt_field, type) {
+simple_table <- function(table, var, wt_field, type = c("total")) {
   z <- 1.96
+  
   print(var)
 
   if (type == "total") {
