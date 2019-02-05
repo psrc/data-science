@@ -758,131 +758,57 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 
 /* STEP 3.	Trip linking */
 
-	-- Revise access and/or egress when reported as a mode within a trip; iterates over pairs to catch multiple instances
+	-- TRIP LINKING STEPS INCORPORATED HERE
+
+	-- Revise access and/or egress when reported as a mode within a trip
 
 		DROP PROCEDURE IF EXISTS within_trip_access_egress;
 		GO
 		CREATE PROCEDURE within_trip_access_egress AS
 		BEGIN
-			UPDATE t -- transit trip access
+			UPDATE t -- correct access in all cases.
 				SET t.mode_acc = CASE WHEN t.mode_acc > t.mode_1 THEN t.mode_acc ELSE t.mode_1 END, 
 							t.mode_1 = t.mode_2,
 							t.mode_2 = t.mode_3,
 							t.mode_3 = t.mode_4,
 							t.mode_4 = NULL			
 				FROM trip AS t
-				WHERE (t.mode_1 NOT IN(SELECT mode_id FROM transitmodes)) 	-- for transitmodes, other modes are considered access/egress
-					AND EXISTS(SELECT 1 									-- at least one mode in transitmodes
-								FROM (VALUES(t.mode_2),(t.mode_3),(t.mode_4)) AS modeset(member)
-								WHERE member IN(SELECT mode_id FROM transitmodes));
+				WHERE 	((t.mode_1 NOT IN(SELECT mode_id FROM transitmodes)) 	-- for transitmodes, other modes are considered access/egress
+							AND EXISTS(SELECT 1 FROM (VALUES(t.mode_2),(t.mode_3),(t.mode_4)) AS modeset(member) WHERE member IN(SELECT mode_id FROM transitmodes)))
+					OR ((t.mode_1 NOT IN(SELECT mode_id FROM automodes)) 	-- for automodes, other modes are considered access/egress
+							AND EXISTS(SELECT 1 FROM (VALUES(t.mode_2),(t.mode_3),(t.mode_4)) AS modeset(member) WHERE member IN(SELECT mode_id FROM automodes)));
 
-			UPDATE t -- transit trip egress from mode_4
+			UPDATE t -- correct egress from mode_4
 				SET t.mode_egr = CASE WHEN t.mode_egr > t.mode_4 THEN t.mode_egr ELSE t.mode_4 END, 
 					t.mode_4 = NULL
 				FROM trip AS t
-				WHERE t.mode_4 IS NOT NULL AND t.mode_4 NOT IN(SELECT mode_id FROM transitmodes)
-					AND EXISTS(SELECT 1 									-- at least one mode in transitmodes
-								FROM (VALUES(t.mode_1),(t.mode_2),(t.mode_3)) AS modeset(member)
-								WHERE member IN(SELECT mode_id FROM transitmodes));
+				WHERE t.mode_4 IS NOT NULL AND
+						(t.mode_4 NOT IN(SELECT mode_id FROM transitmodes)
+							AND EXISTS(SELECT 1 FROM (VALUES(t.mode_1),(t.mode_2),(t.mode_3)) AS modeset(member) WHERE member IN(SELECT mode_id FROM transitmodes)))
+					OR 	(t.mode_4 NOT IN(SELECT mode_id FROM automodes)
+							AND EXISTS(SELECT 1 FROM (VALUES(t.mode_1),(t.mode_2),(t.mode_3)) AS modeset(member) WHERE member IN(SELECT mode_id FROM automodes)));
 
-			UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_3 THEN mode_egr ELSE mode_3 END, mode_3 = NULL -- transit trip egress B
-				WHERE mode_3 IS NOT NULL AND mode_4 IS NULL AND mode_3 NOT IN(SELECT mode_id FROM transitmodes) 
-					AND (mode_1 IN(SELECT mode_id FROM transitmodes) OR mode_2 IN(SELECT mode_id FROM transitmodes));
+			UPDATE t -- correct egress from mode_3
+				SET t.mode_egr = CASE WHEN t.mode_egr > t.mode_3 THEN t.mode_egr ELSE t.mode_3 END, 
+					t.mode_3 = NULL
+				FROM trip AS t
+				WHERE t.mode_3 IS NOT NULL AND t.mode_3 IS NULL AND
+						(t.mode_3 NOT IN(SELECT mode_id FROM transitmodes)
+							AND EXISTS(SELECT 1 FROM (VALUES(t.mode_1),(t.mode_2)) AS modeset(member) WHERE member IN(SELECT mode_id FROM transitmodes)))
+					OR 	(t.mode_4 NOT IN(SELECT mode_id FROM automodes)
+							AND EXISTS(SELECT 1 FROM (VALUES(t.mode_1),(t.mode_2)) AS modeset(member) WHERE member IN(SELECT mode_id FROM automodes)));
 
-			UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_2 THEN mode_egr ELSE mode_2 END, mode_2 = NULL -- transit trip egress C
-				WHERE mode_2 IS NOT NULL AND mode_3 IS NULL AND mode_2 NOT IN(SELECT mode_id FROM transitmodes) 
-					AND mode_1 IN(SELECT mode_id FROM transitmodes);
-
-			UPDATE trip SET mode_acc = CASE WHEN mode_acc > mode_1 THEN mode_acc ELSE mode_1 END, -- non-transit trip access
-							mode_1 = mode_2,
-							mode_2 = mode_3,
-							mode_3 = mode_4,
-							mode_4 = NULL				
-				WHERE mode_1 IN(1,2) AND (mode_2 > 2 OR mode_3 > 2 OR mode_4 > 2);
-
-			UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_4 THEN mode_egr ELSE mode_4 END, mode_4 = NULL -- non-transit trip egress A
-				WHERE mode_4 IN(1,2) AND (mode_1 IN(SELECT mode_id FROM automodes) OR mode_2 IN(SELECT mode_id FROM automodes) OR mode_3 IN(SELECT mode_id FROM automodes));
-
-			UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_3 THEN mode_egr ELSE mode_3 END, mode_3 = NULL -- non-transit trip egress B
-				WHERE mode_3 IN(1,2) AND (mode_1 IN(SELECT mode_id FROM automodes) OR mode_2 IN(SELECT mode_id FROM automodes)) AND mode_4 IS NULL;
-
-			UPDATE trip SET mode_egr = CASE WHEN mode_egr > mode_2 THEN mode_egr ELSE mode_2 END, mode_2 = NULL -- non-transit trip egress C
-				WHERE mode_2 IN(1,2) AND mode_1 IN(SELECT mode_id FROM automodes) AND mode_3 IS NULL;
+			UPDATE t -- correct egress from mode_2
+				SET t.mode_egr = CASE WHEN t.mode_egr > t.mode_2 THEN t.mode_egr ELSE t.mode_2 END, 
+					t.mode_2 = NULL
+				FROM trip AS t
+				WHERE t.mode_2 IS NOT NULL AND t.mode_3 IS NULL AND
+						(t.mode_2 NOT IN(SELECT mode_id FROM transitmodes) AND t.mode_1 IN(SELECT mode_id FROM transitmodes))
+					OR 	(t.mode_4 NOT IN(SELECT mode_id FROM automodes) AND t.mode_1 IN(SELECT mode_id FROM automodes));
 			END
 			GO
 
 		EXEC within_trip_access_egress;
-		EXEC within_trip_access_egress;
-
-	-- Revise access when reported as a separate trip; store the eliminated (access) trips
-
-		SELECT TOP 1 * into eliminated_trips FROM trip;  
-		DELETE FROM eliminated_trips; --creates empty table with structure identical to trips
-
-		UPDATE trip
-			SET trip.mode_acc 				= (SELECT MAX(member) FROM (VALUES(trip.mode_acc),(prev_trip.mode_acc)(prev_trip.mode_1),(prev_trip.mode_2),(prev_trip.mode_3),(prev_trip.mode_4)) AS modeset(member)),
-				trip.depart_time_timestamp 	= prev_trip.depart_time_timestamp,
-				trip.origin_name 			= prev_trip.origin_name,
-				trip.origin_address 		= prev_trip.origin_address,
-				trip.origin_lat 			= prev_trip.origin_lat,
-				trip.origin_lng				= prev_trip.origin_lng,
-				trip.trip_path_distance		= prev_trip.trip_path_distance + trip.trip_path_distance,
-				trip.google_duration		= prev_trip.google_duration + trip.google_duration,
-				trip.reported_duration		= prev_trip.reported_duration + trip.reported_duration
-			FROM trip JOIN trip AS prev_trip ON trip.personid = prev_trip.personid AND trip.tripnum - 1 = prev_trip.tripnum
-			WHERE (SELECT MAX(member) FROM (VALUES(prev_trip.mode_1),(prev_trip.mode_2),(prev_trip.mode_3),(prev_trip.mode_4)) AS modeset(member)) IN(@main) 
-				AND trip.mode_1 NOT IN(@acc_egr)
-				AND prev_trip.dest_purpose <> 9 AND trip.travelers_hh = prev_trip.travelers_hh
-				AND datediff(minute, prev_trip.arrival_time_timestamp, trip.depart_time_timestamp) < 20
-				AND (prev_trip.dest_purpose = trip.dest_purpose OR prev_trip.dest_purpose = 60);
-
-		DELETE prev_trip 
-			OUTPUT DELETED.* INTO eliminated_trips
-			FROM trip JOIN trip AS prev_trip ON trip.personid = prev_trip.personid AND trip.tripnum - 1 = prev_trip.tripnum
-			WHERE (SELECT MAX(member) FROM (VALUES(prev_trip.mode_1),(prev_trip.mode_2),(prev_trip.mode_3),(prev_trip.mode_4)) AS modeset(member)) IN(@acc_egr) 
-				AND trip.mode_1 NOT IN(@acc_egr)
-				AND prev_trip.dest_purpose <> 9 AND trip.travelers_hh = prev_trip.travelers_hh
-				AND datediff(minute, prev_trip.arrival_time_timestamp, trip.depart_time_timestamp) < 20
-				AND (prev_trip.dest_purpose = trip.dest_purpose OR prev_trip.dest_purpose = 60);							
-		GO
-		EXEC tripnum_update;
-		GO
-
-	-- Revise egress when reported as a separate trip; store the eliminated (egress) trips
-		
-		UPDATE trip
-			SET trip.mode_egr 				= (SELECT MAX(member) FROM (VALUES(trip.mode_egr),(next_trip.mode_1),(next_trip.mode_2),(next_trip.mode_3),(next_trip.mode_4)) AS modeset(member)),
-				trip.arrival_time_timestamp = next_trip.arrival_time_timestamp,
-				trip.dest_name 				= next_trip.dest_name,
-				trip.dest_address 			= next_trip.dest_address,
-				trip.dest_lat 				= next_trip.dest_lat,
-				trip.dest_lng				= next_trip.dest_lng,
-				trip.trip_path_distance		= next_trip.trip_path_distance + trip.trip_path_distance,
-				trip.google_duration		= next_trip.google_duration + trip.google_duration,
-				trip.reported_duration		= next_trip.reported_duration + trip.reported_duration
-			FROM trip JOIN trip AS next_trip ON trip.personid = next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum 
-			WHERE (SELECT MAX(member) FROM (VALUES(next_trip.mode_1),(next_trip.mode_2),(next_trip.mode_3),(next_trip.mode_4)) AS modeset(member)) IN(@acc_egr)
-				AND trip.mode_1 NOT IN(1,2) AND trip.mode_egr IS NULL
-				AND next_trip.dest_purpose <> 9 AND trip.travelers_hh = next_trip.travelers_hh
-				AND datediff(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 10
-				AND (trip.dest_purpose = next_trip.dest_purpose OR trip.dest_purpose = 60);		
-
-		DELETE next_trip
-			OUTPUT DELETED.* INTO eliminated_trips
-			FROM trip JOIN trip AS next_trip ON trip.personid = next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum 
-			WHERE (SELECT MAX(member) FROM (VALUES(next_trip.mode_1),(next_trip.mode_2),(next_trip.mode_3),(next_trip.mode_4)) AS modeset(member)) IN(1,2)
-				AND trip.mode_1 NOT IN(1,2) AND trip.mode_egr IS NULL
-				AND next_trip.dest_purpose <> 9 AND trip.travelers_hh = next_trip.travelers_hh
-				AND datediff(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 10
-				AND (trip.dest_purpose = next_trip.dest_purpose OR trip.dest_purpose = 60);
-		GO
-		EXEC tripnum_update;
-		GO
-	-- Link remaining transit trip components reported as separate trips; store the eliminated trips
-	-- Link remaining auto trip components reported as separate trips; store the eliminated trips
-	-- Link any other trip components reported as separate trips; store the eliminated trips
-
-
 
 /* STEP 4. Insert missing passenger trips */
 
@@ -988,6 +914,17 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum,					'home trip purpose, destination elsewhere' as error_flag
 				FROM trip
 				WHERE dest_purpose = 1 AND dest_is_home <> 1
+			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum,					'missing next trip link' as error_flag
+			FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 =next_trip.tripnum
+				WHERE ABS(trip.dest_lat - next_trip.origin_lat) >.0045  --roughly 500m difference or more, using degrees
+			UNION ALL SELECT next_trip.tripid, next_trip.personid, next_trip.tripnum,	'missing previous trip link' as error_flag
+			FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 =next_trip.tripnum
+				WHERE ABS(trip.dest_lat - next_trip.origin_lat) >.0045	--roughly 500m difference or more, using degrees
+			UNION ALL SELECT next_trip.tripid, next_trip.personid, next_trip.tripnum,	'starts from non-home location' as error_flag
+			FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 =next_trip.tripnum
+				WHERE DATEDIFF(Day, trip.arrival_time_timestamp, next_trip.depart_time_timestamp)=1 
+					AND dbo.TRIM(next_trip.origin_name)<>'HOME' 
+					AND DATEPART(Hour, next_trip.depart_time_timestamp)>1;\
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum, 					'suspected drop-off or pick-up coded as school trip' as error_flag
 				FROM trip 
 					JOIN person ON trip.personid=person.personid 
