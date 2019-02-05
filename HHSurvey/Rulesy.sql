@@ -648,7 +648,8 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 				psrc_inserted bit NULL;
 		GO
 		
-		UPDATE trip	SET geom = geometry::STPointFromText('POINT(' + CAST(dest_lng AS VARCHAR(20)) + ' ' + CAST(dest_lat AS VARCHAR(20)) + ')', 4326);
+		UPDATE trip	SET dest_geom = 	geometry::STPointFromText('POINT(' + CAST(dest_lng AS VARCHAR(20)) + ' ' + CAST(dest_lat AS VARCHAR(20)) + ')', 4326),
+						origin_geom = 	geometry::STPointFromText('POINT(' + CAST(origin_lng AS VARCHAR(20)) + ' ' + CAST(origin_lat AS VARCHAR(20)) + ')', 4326);
 		ALTER TABLE trip ADD CONSTRAINT PK_trip PRIMARY KEY CLUSTERED (tripid) WITH FILLFACTOR=80;
 		DROP SEQUENCE IF EXISTS tripid_increment;
 		CREATE SEQUENCE tripid_increment AS int START WITH 1 INCREMENT BY 1 NO CYCLE;  -- Create sequence object to generate tripid for new records & add indices
@@ -661,7 +662,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		CREATE INDEX travelers_total_idx ON trip(travelers_total);
 		GO
 	 
-		CREATE SPATIAL INDEX geom_idx ON trip(geom)
+		CREATE SPATIAL INDEX dest_geom_idx ON trip(dest_geom)
 			USING GEOMETRY_AUTO_GRID
 			WITH (BOUNDING_BOX= (xmin=-157.858, ymin=-20, xmax=124.343, ymax=57.803));
 	
@@ -698,17 +699,17 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 
 		UPDATE trip --fill missing zipcode
 			SET trip.dest_zip = zipwgs.zipcode
-			FROM trip join dbo.zipcode_wgs as zipwgs ON trip.geom.STIntersects(zipwgs.geom)=1
+			FROM trip join dbo.zipcode_wgs as zipwgs ON trip.dest_geom.STIntersects(zipwgs.geom)=1
 			WHERE trip.dest_zip IS NULL;
 
 	/*	UPDATE trip --fill missing city --NOT YET AVAILABLE
 			SET trip.dest_city = [ENTER CITY GEOGRAPHY HERE].City
-			FROM trip join [ENTER CITY GEOGRAPHY HERE] ON trip.geom.STIntersects([ENTER CITY GEOGRAPHY HERE].geom)=1
+			FROM trip join [ENTER CITY GEOGRAPHY HERE] ON trip.dest_geom.STIntersects([ENTER CITY GEOGRAPHY HERE].geom)=1
 			WHERE trip.dest_city IS NULL;
 	*/
 		UPDATE trip --fill missing county
 			SET trip.dest_county = zipwgs.county
-			FROM trip join dbo.zipcode_wgs as zipwgs ON trip.geom.STIntersects(zipwgs.geom)=1
+			FROM trip join dbo.zipcode_wgs as zipwgs ON trip.dest_geom.STIntersects(zipwgs.geom)=1
 			WHERE trip.dest_county IS NULL;
 
 
@@ -877,12 +878,12 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum, 					'non-worker reporting work trip' as error_flag
 				FROM trip JOIN person AS p ON p.personid=trip.personid
 				WHERE p.worker = 0 AND trip.dest_purpose in(10,11,14)
-			UNION ALL SELECT tripid, personid, tripnum, 								'speed unreasonably high' as error_flag
-				FROM trip 									
-				WHERE 	(mode_1 = 1 AND speed_mph > 20)
-					OR 	(mode_1 = 2 AND speed_mph > 40)
-					OR 	((mode_1 between 3 and 52 AND mode_1 <> 31) AND speed_mph > 85)
-					OR 	(speed_mph > 600)	
+			UNION ALL SELECT t.tripid, t.personid, t.tripnum, 							'speed unreasonably high' as error_flag
+				FROM trip AS t									
+				WHERE 	(t.mode_1 = 1 AND t.speed_mph > 20)
+					OR 	(t.mode_1 = 2 AND t.speed_mph > 40)
+					OR 	((t.mode_1 between 3 and 52 AND t.mode_1 <> 31) AND t.speed_mph > 85)
+					OR 	(t.speed_mph > 600)	
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum,					'no activity time prior to next departure' as error_flag
 				FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 =next_trip.tripnum
 				WHERE DATEDIFF(Second, trip.depart_time_timestamp, next_trip.depart_time_timestamp) < 60
@@ -909,11 +910,11 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 								FROM (VALUES(trip.transit_line_1),(trip.transit_line_2),(trip.transit_line_3),(trip.transit_line_4),(trip.transit_line_5)) AS transitline(member) 
 								WHERE member IS NOT NULL GROUP BY member HAVING count(*) > 1)
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum,					'non-home trip purpose, destination home' as error_flag
-				FROM trip
-				WHERE dest_purpose <> 1 AND dest_is_home = 1
+				FROM trip AS t
+				WHERE t.dest_purpose <> 1 AND t.dest_is_home = 1
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum,					'home trip purpose, destination elsewhere' as error_flag
-				FROM trip
-				WHERE dest_purpose = 1 AND dest_is_home <> 1
+				FROM trip AS t
+				WHERE t.dest_purpose = 1 AND t.dest_is_home <> 1
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum,					'missing next trip link' as error_flag
 			FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 =next_trip.tripnum
 				WHERE ABS(trip.dest_lat - next_trip.origin_lat) >.0045  --roughly 500m difference or more, using degrees
@@ -922,9 +923,14 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 				WHERE ABS(trip.dest_lat - next_trip.origin_lat) >.0045	--roughly 500m difference or more, using degrees
 			UNION ALL SELECT next_trip.tripid, next_trip.personid, next_trip.tripnum,	'starts from non-home location' as error_flag
 			FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 =next_trip.tripnum
-				WHERE DATEDIFF(Day, trip.arrival_time_timestamp, next_trip.depart_time_timestamp)=1 
+				WHERE DATEDIFF(Day, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) = 1 --first trip of the day
 					AND dbo.TRIM(next_trip.origin_name)<>'HOME' 
-					AND DATEPART(Hour, next_trip.depart_time_timestamp)>1;\
+					AND DATEPART(Hour, next_trip.depart_time_timestamp) > 1  -- Night owls typically home before 2am
+			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum,					'unusually long duration at destination' as error_flag
+				FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 =next_trip.tripnum
+					WHERE   (trip.dest_purpose IN(6,10,11,12,14)    			AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) > 720)
+    					OR  (trip.dest_purpose IN(30,33,34,50)      			AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) > 180)
+   						OR  (trip.dest_purpose IN(32,51,52,53,54,56,60,61,62) 	AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) > 300)
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum, 					'suspected drop-off or pick-up coded as school trip' as error_flag
 				FROM trip 
 					JOIN person ON trip.personid=person.personid 
@@ -945,7 +951,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 
 		UPDATE trip --revises purpose field for return portion of a single stop loop trip 
 			SET trip.dest_purpose = 1
-			OUTPUT INSERTED.tripid, INSERTED.personid, 'non-home trip purpose, destination home' AS error_flag INTO fixed 
+			OUTPUT INSERTED.tripid, INSERTED.personid, 									'non-home trip purpose, destination home' AS error_flag INTO fixed 
 			FROM trip 
 				JOIN trip AS prev_trip on trip.personid=prev_trip.personid AND trip.tripnum - 1 = prev_trip.tripnum
 			WHERE trip.dest_purpose <> 1 and trip.dest_is_home = 1
@@ -953,7 +959,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 
 		UPDATE trip --changes purpose code from school to pickup/dropoff when passenger number changes and duration is under 30 minutes
 			SET trip.dest_purpose = 9
-			OUTPUT INSERTED.tripid, INSERTED.personid, 'suspected drop-off or pick-up coded as school trip' AS error_flag INTO fixed
+			OUTPUT INSERTED.tripid, INSERTED.personid, 									'suspected drop-off or pick-up coded as school trip' AS error_flag INTO fixed
 			FROM trip 
 				JOIN person ON trip.personid=person.personid 
 				JOIN trip as next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
@@ -963,7 +969,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		
 		UPDATE trip --changes code to 'family activity' when passenger number changes and duration is from 30mins to 4hrs
 			SET trip.dest_purpose = 56
-			OUTPUT INSERTED.tripid, INSERTED.personid, 'suspected drop-off or pick-up coded as school trip' AS error_flag INTO fixed
+			OUTPUT INSERTED.tripid, INSERTED.personid, 									'suspected drop-off or pick-up coded as school trip' AS error_flag INTO fixed
 			FROM trip 
 				JOIN person ON trip.personid=person.personid 
 				JOIN trip as next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
