@@ -1,0 +1,182 @@
+---
+title: "Trend Data to Elmer"
+output: html_notebook
+---
+This code downloads and compiles various trends data for incorporation into standard datatables in the Central Database.
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(readxl)
+library(data.table)
+library(lubridate)
+library(odbc)
+library(DBI)
+
+```
+
+This chunk of code pulls down the annual Office of Financial Management (OFM) blockgroup population and housing data between 2000 and the latest data year and stores it in a long-form data.table for inclusion into the Central Database. The data is made available in the fall of every year (by the end of September).
+
+```{r ofm_population_data, include=FALSE}
+ofm_url <- 'https://www.ofm.wa.gov/sites/default/files/public/legacy/pop/smallarea/data/xlsx/saep_bg10.xlsx'
+
+# Details from OFM file including a list of tabs in the spreadsheet to iterate over
+download.file(ofm_url, "working.xlsx", quiet = FALSE, mode = "wb")
+ofm_pop_file <- paste0(getwd(),"/working.xlsx")
+
+list_of_tabs <- excel_sheets(ofm_pop_file)
+ofm_dt <- NULL
+
+# Create a long form data.table of all OFM variables for inlcusion in Central DB
+for (tabs in list_of_tabs) {
+  ofm_pop_bg <- read_excel(ofm_pop_file,sheet = tabs, skip = 10)
+  setDT(ofm_pop_bg)
+  ofm_pop_bg <- na.omit(ofm_pop_bg)
+
+  # Remove the columns that have deltas calculated
+  cols_delta <- "([2][0-9]{3} to [2][0-9]{3})"
+  cols_to_remove <- str_subset(colnames(ofm_pop_bg), cols_delta)
+  ofm_pop_bg <- ofm_pop_bg[, (cols_to_remove):=NULL]
+
+  # Drop Columns that are not the BlockGroup or Yearly Results
+  cols_year <- "([2][0-9]{3})"
+  cols_to_keep <- str_subset(colnames(ofm_pop_bg), cols_year)
+  cols_to_keep <- c("Census Block Group Code Complete",cols_to_keep)
+  ofm_pop_bg <- ofm_pop_bg[, ..cols_to_keep]
+
+  # Now Rename columns to GEOID and Year before the data is transformed to long form
+  cols_year <- "([2][0-9]{3})"
+  updated_names <- str_subset(colnames(ofm_pop_bg), cols_year)
+  updated_names <- str_sub(updated_names, -4, -1)
+  updated_names <- c("geoid",updated_names)
+  setnames(ofm_pop_bg,updated_names)
+
+  working_dt <- melt(ofm_pop_bg, id.vars = c("geoid"), measure.vars = str_subset(colnames(ofm_pop_bg), cols_year))
+  working_dt$date <- paste0("04/01/", working_dt$variable)
+  working_dt <- working_dt[, date:=as.Date(date,"%d/%m/%Y")]
+  working_dt$attribute <- tabs
+  working_dt <- working_dt[, variable:=NULL]
+
+  ifelse(is.null(ofm_dt), ofm_dt <- working_dt, ofm_dt <- rbindlist(list(ofm_dt, working_dt)))
+}
+
+ofm_dt <- ofm_dt[, record_id := .I]
+final_column_order <- c('record_id','geoid','date','attribute','value')
+setcolorder(ofm_dt, final_column_order)
+
+# Now delete the temporary downloaded file
+file.remove(ofm_pop_file)
+
+```
+
+This chunk of code pulls down the monthly Employment Security Division (ESD) metropolitan statistical area covered employment data between 1990 and the latest monthly data and stores it in a long-form data.table for inclusion into the Central Database. The data is made available in the last week of each month.
+
+```{r esd_employment_data, include=FALSE}
+esd_url <- 'https://esdorchardstorage.blob.core.windows.net/esdwa/Default/ESDWAGOV/labor-market-info/Libraries/Economic-reports/Washington-employment-estimates/WA-QB-historical-SA.xlsx'
+
+# Details from ESD file including a list of tabs in the spreadsheet to iterate over
+download.file(esd_url, "working.xlsx", quiet = FALSE, mode = "wb")
+esd_job_file <- paste0(getwd(),"/working.xlsx")
+
+list_of_tabs <- excel_sheets(esd_job_file)
+list_of_tabs <- list_of_tabs[!list_of_tabs %in% "Index"]
+esd_dt <- NULL
+
+# Create a long form data.table of all OFM variables for inlcusion in Central DB
+for (tabs in list_of_tabs) {
+  esd_job_msa <- read_excel(esd_job_file,sheet = tabs, skip = 1)
+  setDT(esd_job_msa)
+  esd_job_msa <- na.omit(esd_job_msa)
+
+  # Get list of the monthly columns
+  month_pattern <- "([0-9]{5})"
+  monthly_columns <- str_subset(colnames(esd_job_msa), month_pattern)
+  monthly_columns <- as.integer(monthly_columns)
+  monthly_columns <- monthly_columns - 25569
+  updated_names <- c("naics_code","naics_name",as.character(as_date(monthly_columns)))
+  setnames(esd_job_msa,updated_names)
+  
+  working_dt <- melt(esd_job_msa, id.vars = c("naics_code","naics_name"), measure.vars = as.character(as_date(monthly_columns)))
+  
+  working_dt$date <- as_date(working_dt$variable)
+  working_dt$msa_name <- tabs
+  working_dt <- working_dt[, variable:=NULL]
+
+  ifelse(is.null(esd_dt), esd_dt <- working_dt, esd_dt <- rbindlist(list(esd_dt, working_dt)))
+}
+
+esd_dt <- esd_dt[, record_id := .I]
+final_column_order <- c('record_id','naics_code','naics_name','date','msa_name','value')
+setcolorder(esd_dt, final_column_order)
+
+# Now delete the temporary downloaded file
+file.remove(esd_job_file)
+
+```
+
+This chunk of code pulls down the monthly National Transit Database data between 2002 and the latest monthly data and stores it in a long-form data.table for inclusion into the Central Database. The data is made available in the second week of each month.
+
+```{r ntd_data, include=FALSE}
+current_day <- day(Sys.Date())
+
+if (current_day <= 15) {
+  data_month <- months(as.Date(Sys.Date()) %m-% months(3))
+  data_year <- as.integer(year(as.Date(Sys.Date()) %m-% months(3)))
+
+} else {
+  data_month <- months(as.Date(Sys.Date()) %m-% months(2))
+  data_year <- as.integer(year(as.Date(Sys.Date()) %m-% months(2)))
+}
+
+working_url <- paste0('https://www.transit.dot.gov/sites/fta.dot.gov/files/',as.character(data_month),'%20',as.character(data_year),'%20Adjusted%20Database.xlsx')
+
+# Details from downloaded file including a list of tabs in the spreadsheet to iterate over
+download.file(working_url, "working.xlsx", quiet = FALSE, mode = "wb")
+working_file <- paste0(getwd(),"/working.xlsx")
+
+list_of_tabs <- excel_sheets(working_file)
+list_of_tabs <- list_of_tabs[list_of_tabs %in% c("UPT","VRM","VRH")]
+ntd_dt <- NULL
+
+# Create a long form data.table of all variables for inclusion in Central DB
+for (tabs in list_of_tabs) {
+  working_dt <- read_excel(working_file,sheet = tabs, skip = 0)
+  setDT(working_dt)
+
+  # Remove inactive reporters and non-reporters from the trend data and clean columns
+  working_dt <- working_dt[Active %in% c("Active")]
+  working_dt <- working_dt[`Reporter Type` %in% c("Full Reporter")]
+  working_dt <- working_dt[, `4 digit NTD ID`:=NULL]
+  working_dt <- working_dt[, Active:=NULL]
+  working_dt <- working_dt[, `Reporter Type`:=NULL]
+
+  # Get list of the monthly columns that are the measure variables in flattened data.table
+  month_pattern <- "([0-9]{2})"
+  monthly_columns <- str_subset(colnames(working_dt), month_pattern)
+  updated_colnames <- c("ntd_id","agency_name","uza_code","uza_name","modes","tos",monthly_columns)
+  setnames(working_dt,updated_colnames)
+  
+  variable_columns <- c("ntd_id","agency_name","uza_code","uza_name","modes","tos")
+  working_dt <- melt(working_dt, id.vars = variable_columns, measure.vars = monthly_columns)
+  
+  working_dt$month <- substr(working_dt$variable, 1, 3)
+  working_dt$year <- substr(working_dt$variable, 4, 5)
+  working_dt$date <- paste0(working_dt$month,"/01/20", working_dt$year)
+    
+  # Convert the variable column to a date
+  working_dt$date <- mdy(working_dt$date)
+  working_dt$attribute <- tabs
+  working_dt <- working_dt[, variable:=NULL]
+  working_dt <- working_dt[, month:=NULL]
+  working_dt <- working_dt[, year:=NULL]
+
+  ifelse(is.null(ntd_dt), ntd_dt <- working_dt, ntd_dt <- rbindlist(list(ntd_dt, working_dt)))
+}
+
+ntd_dt <- ntd_dt[, record_id := .I]
+final_column_order <- c('record_id','ntd_id','agency_name','uza_code','uza_name','modes','tos','date','attribute','value')
+setcolorder(ntd_dt, final_column_order)
+
+# Now delete the temporary downloaded file
+file.remove(working_file)
+
+```
