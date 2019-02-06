@@ -180,3 +180,38 @@ setcolorder(ntd_dt, final_column_order)
 file.remove(working_file)
 
 ```
+
+This chunk of code pulls down the monthly Bureau of Labor Statistics between 2002 and the latest monthly data and stores it in a long-form data.table for inclusion into the Central Database. The data is made available in the second week of each month.
+
+```{r bls_data, include=FALSE}
+
+analysis_years <- c(2018)
+analysis_quarters <- c(1,2,3,4)
+
+for (working_year in analysis_years) {
+
+  for (working_qtr in analysis_quarters) {
+  working_url <- paste0('http://www.bls.gov/cew/data/api/', as.character(working_year), '/', as.character(working_qtr), '/industry/10.csv')
+
+  # Details from downloaded file including a list of tabs in the spreadsheet to iterate over
+  try (download.file(working_url, "working.csv", quiet = FALSE, mode = "wb"))
+  
+  
+  
+  
+  working_file <- paste0(getwd(),"/working.csv")
+  }
+
+}
+
+working_dt <- read.csv(working_file)
+setDT(working_dt)
+columns_to_keep <- c("area_fips","own_code","industry_code","year","qtr","month1_emplvl","month2_emplvl","month3_emplvl","avg_wkly_wage")
+
+working_dt <- working_dt[, ..columns_to_keep]
+working_dt <- working_dt[own_code== 0]
+working_dt <- working_dt[industry_code== 10]
+
+
+
+```
