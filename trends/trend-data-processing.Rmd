@@ -181,37 +181,192 @@ file.remove(working_file)
 
 ```
 
-This chunk of code pulls down the monthly Bureau of Labor Statistics between 2002 and the latest monthly data and stores it in a long-form data.table for inclusion into the Central Database. The data is made available in the second week of each month.
+This chunk of code pulls down the quarterly Bureau of Labor Statistics between 2014 and the latest quarterly data and stores it in a long-form data.table for inclusion into the Central Database. The data is made available quarterly.
 
 ```{r bls_data, include=FALSE}
 
-analysis_years <- c(2018)
+analysis_years <- c(2014,2015,2016,2017,2018)
 analysis_quarters <- c(1,2,3,4)
 
-for (working_year in analysis_years) {
-
-  for (working_qtr in analysis_quarters) {
+compile_bls_data <- function(working_qtr, working_year, working_dt) {
   working_url <- paste0('http://www.bls.gov/cew/data/api/', as.character(working_year), '/', as.character(working_qtr), '/industry/10.csv')
-
-  # Details from downloaded file including a list of tabs in the spreadsheet to iterate over
-  try (download.file(working_url, "working.csv", quiet = FALSE, mode = "wb"))
   
-  
-  
-  
+  download.file(working_url, "working.csv", quiet = FALSE, mode = "wb")
   working_file <- paste0(getwd(),"/working.csv")
+  current_dt <- read.csv(working_file)
+  setDT(current_dt)
+  columns_to_keep <- c("area_fips","own_code","industry_code","year","qtr","month1_emplvl","month2_emplvl","month3_emplvl","avg_wkly_wage")
+
+  current_dt <- current_dt[, ..columns_to_keep]
+  current_dt <- current_dt[own_code== 0]
+  current_dt <- current_dt[industry_code== 10]  
+  ifelse(is.null(working_dt), working_dt <- current_dt, working_dt <- rbindlist(list(working_dt, current_dt)))
+    
+  return(working_dt)
+}
+
+# Loop over downloads from BLS and create a master data.table
+working_dt <- NULL
+for (current_year in analysis_years) {
+  for (current_qtr in analysis_quarters) {
+    try(working_dt <- compile_bls_data(current_qtr,current_year, working_dt))
   }
 
 }
 
-working_dt <- read.csv(working_file)
-setDT(working_dt)
-columns_to_keep <- c("area_fips","own_code","industry_code","year","qtr","month1_emplvl","month2_emplvl","month3_emplvl","avg_wkly_wage")
+# Remove a couple columns thjat are not really needed.
+working_dt <- working_dt[, own_code:=NULL]
+working_dt <- working_dt[, industry_code:=NULL]
+updated_names <- c("area_fips","year","qtr","month1","month2","month3","weekly_wages")
+setnames(working_dt,updated_names)
 
-working_dt <- working_dt[, ..columns_to_keep]
-working_dt <- working_dt[own_code== 0]
-working_dt <- working_dt[industry_code== 10]
+variable_columns <- c("area_fips","year","qtr")
+measure_columns <- c("month1","month2","month3","weekly_wages")
+bls_dt  <- melt(working_dt , id.vars = variable_columns, measure.vars = measure_columns)
+bls_dt$variable <- as.character(bls_dt$variable)
+bls_dt$area_fips <- as.character(bls_dt$area_fips)
 
+# Need to clean this but for now it works
+bls_dt[(variable == "month1" & qtr == 1), month := "jan"]
+bls_dt[(variable == "month2" & qtr == 1), month := "feb"]
+bls_dt[(variable == "month3" & qtr == 1), month := "mar"]
+bls_dt[(variable == "month1" & qtr == 2), month := "apr"]
+bls_dt[(variable == "month2" & qtr == 2), month := "may"]
+bls_dt[(variable == "month3" & qtr == 2), month := "jun"]
+bls_dt[(variable == "month1" & qtr == 3), month := "jul"]
+bls_dt[(variable == "month2" & qtr == 3), month := "aug"]
+bls_dt[(variable == "month3" & qtr == 3), month := "sep"]
+bls_dt[(variable == "month1" & qtr == 4), month := "oct"]
+bls_dt[(variable == "month2" & qtr == 4), month := "nov"]
+bls_dt[(variable == "month3" & qtr == 4), month := "dec"]
+bls_dt[(variable == "weekly_wages" & qtr == 1), month := "jan"]
+bls_dt[(variable == "weekly_wages" & qtr == 2), month := "apr"]
+bls_dt[(variable == "weekly_wages" & qtr == 3), month := "jul"]
+bls_dt[(variable == "weekly_wages" & qtr == 4), month := "oct"]
 
+bls_dt$date <- paste0(bls_dt$month,"/01/", bls_dt$year)
+bls_dt$date <- mdy(bls_dt$date)
+bls_dt <- bls_dt[, year:=NULL]
+bls_dt <- bls_dt[, qtr:=NULL]
+bls_dt <- bls_dt[, month:=NULL]
+
+bls_dt[(variable == "month1" | variable == "month2" | variable == "month3"), variable := "jobs"]
+
+bls_dt <- bls_dt[, record_id := .I]
+final_column_order <- c('record_id','area_fips','variable','date','value')
+setcolorder(bls_dt, final_column_order)
+
+# Now delete the temporary downloaded file
+file.remove(working_file)
+
+```
+
+This chunk of code pulls down the monthly FHWA VMT data between 2010 and the latest monthly data and stores it in a long-form data.table for inclusion into the Central Database. The data is made available monthly.
+
+```{r fhwa_vmt_data, include=FALSE}
+
+analysis_years <- c("12","13","14","15","16","17","18")
+analysis_months <- c("jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec")
+list_of_tabs <- c("Page 4","Page 5","Page 6")
+
+download_fhwa_vmt <- function(working_year, working_month){
+    tryCatch(
+        {
+        working_url <- paste0('https://www.fhwa.dot.gov/policyinformation/travel_monitoring/', working_year, working_month,'tvt/', working_year, working_month,'tvt.xls')
+        download.file(working_url, "working.xls", quiet = FALSE, mode = "wb")
+        working_file <- paste0(getwd(),"/working.xls")
+        return(working_file)
+        },
+        
+        error=function(error_message) {
+          
+          # First try and see if it is an xlsx file otherwise just move on
+          tryCatch(
+            {
+            working_url <- paste0('https://www.fhwa.dot.gov/policyinformation/travel_monitoring/', working_year, working_month,'tvt/', working_year, working_month,'tvt.xlsx')
+            download.file(working_url, "working.xlsx", quiet = FALSE, mode = "wb")
+            working_file <- paste0(getwd(),"/working.xlsx")
+            return(working_file)
+            },
+            
+            error=function(error_message) {
+              message(error_message)
+            }
+          )
+        }
+    )
+} 
+
+# Loop over downloads from BLS and create a master data.table
+fhwa_vmt_dt <- NULL
+for (working_year in analysis_years) {
+  
+  for (working_month in analysis_months) {
+    
+    working_file <-download_fhwa_vmt(working_year,working_month)
+    
+    if (!is.null(working_file)) {
+  
+      for (tabs in list_of_tabs) {
+  
+        current_month <- mdy(paste0(working_month,"-01-20",working_year))
+        previous_month <- current_month %m-% months(1)
+
+        current_dt <- read_excel(working_file,sheet = tabs, skip = 4)
+        setDT(current_dt)
+  
+        data_columns <- c("..1", str_subset(colnames(current_dt), "Revised"))
+        current_dt <- current_dt[, ..data_columns]
+        updated_names <- c("state",as.character(previous_month))
+        setnames(current_dt, updated_names)
+        current_dt <- na.omit(current_dt)
+        current_dt <- current_dt[!(state %in% c("Subtotal","TOTALS","District of Columbia"))]
+        convert_to_num <- c(as.character(previous_month))
+        current_dt[, convert_to_num] <- current_dt[, lapply(.SD, as.numeric), .SDcols = convert_to_num] *1000000
+  
+        variable_columns <- c("state")
+        measure_columns <- c(as.character(previous_month))
+        current_dt  <- melt(current_dt , id.vars = variable_columns, measure.vars = measure_columns)
+        current_dt$date <- ymd(current_dt$variable)
+        current_dt <- current_dt[, variable:=NULL]
+  
+        ifelse(tabs == "Page 4", current_dt$attribute <- "rural arterials", ifelse(tabs == "Page 5", current_dt$attribute <- "urban arterials", current_dt$attribute <- "all roadways"))
+  
+        ifelse(is.null(fhwa_vmt_dt), fhwa_vmt_dt <- current_dt, fhwa_vmt_dt <- rbindlist(list(fhwa_vmt_dt, current_dt)))
+      }
+    }
+  } 
+}  
+      
+fhwa_vmt_dt <- fhwa_vmt_dt[, record_id := .I]
+final_column_order <- c('record_id','state','attribute','date','value')
+setcolorder(fhwa_vmt_dt, final_column_order)
+
+# Now delete the temporary downloaded file
+file.remove(working_file)
+
+```
+
+This chunk of code stores the various data.tables from the previous code chunks and puts them in the Central Database.
+
+```{r write_to_db, include = FALSE}
+
+# SQL Database Connection settings
+elmer_connection <- dbConnect(odbc::odbc(),
+  driver = "SQL Server",
+  server = "sql2016\\DSADEV",
+  database = "Sandbox",
+  trusted_connection = "yes"
+  )
+
+# Write data to Central Database
+dbWriteTable(elmer_connection, "ofm_blockgroup_pop_housing", ofm_dt, overwrite=TRUE)
+dbWriteTable(elmer_connection, "esd_wa_monthly_msa_jobs", esd_dt, overwrite=TRUE)
+dbWriteTable(elmer_connection, "ntd_monthly_transit_data", ntd_dt, overwrite=TRUE)
+dbWriteTable(elmer_connection, "bls_national_wage_job_data", bls_dt, overwrite=TRUE)
+dbWriteTable(elmer_connection, "fhwa_monthly_statewide_vmt", fhwa_vmt_dt, overwrite=TRUE)
+
+# Close Connections to Central Databas
+dbDisconnect(elmer_connection)
 
 ```
