@@ -16,7 +16,7 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 DROP SEQUENCE IF EXISTS tripid_increment, workhorse_sequence;
-DROP TABLE IF EXISTS household, person, tripx_raw, trip, transitmodes, automodes, pedmodes, walkmodes, nontransitmodes, eliminated_trips;
+DROP TABLE IF EXISTS household, person, tripx_raw, trip, transitmodes, automodes, pedmodes, walkmodes, nontransitmodes, trip_ingredients;
 
 CREATE TABLE transitmodes (mode_id int PRIMARY KEY NOT NULL);
 CREATE TABLE automodes (mode_id int PRIMARY KEY NOT NULL);
@@ -26,7 +26,7 @@ GO
 INSERT INTO transitmodes(mode_id) VALUES (23),(24),(26),(27),(28),(31),(32),(41),(42),(52);
 INSERT INTO automodes(mode_id) values (3),(4),(5),(6),(7),(8),(9),(10),(11),(12),(16),(17),(18),(21),(22),(33),(34),(36),(37),(47);
 INSERT INTO pedmodes(mode_id) values(1),(2);
-INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT mode_id FROM automodes;
+INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT mode_id FROM automodes;	
 
 /* STEP 1. 	Load data from fixed format .csv files.  */
 	--	Due to field import difficulties, the trip table is imported in two steps--a loosely typed table, then queried using CAST into a tightly typed table.
@@ -802,13 +802,14 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 
 /* STEP 3.	Trip linking */
 
-		DROP TABLE IF EXISTS eliminated_trip;
-		SELECT TOP 1 *, 0 AS trip_link INTO eliminated_trip FROM trip;
-		TRUNCATE TABLE eliminated_trip;
+		DROP TABLE IF EXISTS trip_ingredient;
+		SELECT TOP 1 *, 0 AS trip_link INTO trip_ingredient FROM trip;
+		TRUNCATE TABLE trip_ingredient;
 
 		-- remove component records into separate table, starting w/ 2nd component (i.e., first is left in trip table).  The criteria here determine which get considered components.
+		
 		DELETE next_trip  
-		OUTPUT DELETED.*, 0 AS trip_link INTO eliminated_trip
+		OUTPUT DELETED.*, 0 AS trip_link INTO trip_ingredient
 		FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
 			WHERE 	trip.dest_is_home IS NULL AND trip.dest_is_work IS NULL AND 
 				((trip.dest_purpose = 60 AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 30)
@@ -816,84 +817,90 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 					AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 15 
 					AND (trip.mode_1<>next_trip.mode_1 OR (trip.mode_1 = next_trip.mode_1 AND EXISTS (SELECT trip.mode_1 FROM transitmodes)))));
 		
-		-- set the trip_link value to the initial component.
-		UPDATE et  
-			SET et.trip_link = (et.tripnum - 1)
-			FROM eliminated_trip AS et LEFT JOIN eliminated_trip AS previous_et ON et.personid = previous_et.personid AND (et.tripnum - 1) = previous_et.tripnum
-			WHERE (CONCAT(et.personid, (et.tripnum - 1)) <> CONCAT(previous_et.personid, previous_et.tripnum));
-
-		-- assign that trip_link value to remaining records in the trip.
-		WITH cte (tripid, ref_link) AS 
-		(SELECT et.tripid, MAX(et.personid + et.trip_link) OVER(PARTITION BY et.personid ORDER BY et.tripnum ROWS UNBOUNDED PRECEDING) AS ref_link
-			FROM eliminated_trip AS et)
-		UPDATE main
-			SET main.trip_link = cte.ref_link - main.personid
-			FROM eliminated_trip AS main JOIN cte ON main.tripid  =cte.tripid
-			WHERE main.trip_link = 0;	
+		-- set the trip_link value of the 2nd component to the tripnum of the 1st component.
+		UPDATE ti  
+			SET ti.trip_link = (ti.tripnum - 1)
+			FROM trip_ingredient AS ti LEFT JOIN trip_ingredient AS previous_et ON ti.personid = previous_et.personid AND (ti.tripnum - 1) = previous_et.tripnum
+			WHERE (CONCAT(ti.personid, (ti.tripnum - 1)) <> CONCAT(previous_et.personid, previous_et.tripnum));
 		
-		-- denote trips with too many components to be linked programmatically, for later examination (rare; typically requires judgment to identify actual stops).  
-		WITH cte AS (SELECT et1.personid, et1.trip_link, count(*) AS records FROM eliminated_trip as et1 GROUP BY et1.personid, et1.trip_link HAVING count(*) > 4)
-		UPDATE et
-			SET et.trip_link = -1
-			FROM eliminated_trip AS et JOIN cte ON cte.personid = et.personid AND cte.trip_link = et.trip_link;
+		-- assign trip_link value to remaining records in the trip.
+		WITH cte (tripid, ref_link) AS 
+		(SELECT ti1.tripid, MAX(ti1.trip_link) OVER(PARTITION BY ti1.personid ORDER BY ti1.tripnum ROWS UNBOUNDED PRECEDING) AS ref_link
+			FROM trip_ingredient AS ti1)
+		UPDATE ti
+			SET ti.trip_link = cte.ref_link - ti.personid
+			FROM trip_ingredient AS ti JOIN cte ON ti.tripid = cte.tripid
+			WHERE ti.trip_link = 0;	
 
-		-- meld the eliminated_trips to create the fields that will populate the linked trip, and saves those as a separate table, 'linked_trip'.
+		-- add the 1st component without deleting it from the trip table.
+		INSERT INTO trip_ingredient
+			SELECT t.*, t.tripnum AS trip_link FROM trip AS t JOIN trip_ingredient AS ti ON t.personid = ti.personid AND t.tripnum = ti.trip_link;
+
+		-- denote trips with too many components to be linked programmatically, for later examination (rare; typically requires judgment to identify actual stops).  
+		WITH cte AS (SELECT ti1.personid, ti1.trip_link, count(*) AS records FROM trip_ingredient as ti1 GROUP BY ti1.personid, ti1.trip_link HAVING count(*) > 5)
+		UPDATE ti
+			SET ti.trip_link = -1
+			FROM trip_ingredient AS ti JOIN cte ON cte.personid = ti.personid AND cte.trip_link = ti.trip_link;
+
+		-- meld the trip_ingredients to create the fields that will populate the linked trip, and saves those as a separate table, 'linked_trip'.
 		DROP TABLE IF EXISTS linked_trip;
 		GO
 		WITH cte_agg AS
-		(SELECT eta.personid,
-				eta.trip_link,
-				MAX(eta.arrival_time_timestamp) AS arrival_time_timestamp,
-				SUM(eta.trip_path_distance) AS trip_path_distance, SUM(eta.google_duration) AS google_duration, SUM(eta.reported_duration) AS reported_duration,
-				MAX(eta.hhmember1) AS hhmember1, MAX(eta.hhmember2) AS hhmember2, MAX(eta.hhmember3) AS hhmember3, MAX(eta.hhmember4) AS hhmember4, MAX(eta.hhmember5) AS hhmember5, 
-				MAX(eta.hhmember6) AS hhmember6, MAX(eta.hhmember7) AS hhmember7, MAX(eta.hhmember8) AS hhmember8, MAX(eta.hhmember9) AS hhmember9, MAX(eta.hhmember_none) AS hhmember_none, 
-				MAX(eta.travelers_hh) AS travelers_hh, MAX(eta.travelers_nonhh) AS travelers_nonhh, MAX(eta.travelers_total) AS travelers_total				
-			FROM eliminated_trip as eta GROUP BY eta.personid, eta.trip_link),
+		(SELECT ti_agg.personid,
+				ti_agg.trip_link,
+				MAX(ti_agg.arrival_time_timestamp) AS arrival_time_timestamp,
+				SUM(ti_agg.trip_path_distance) AS trip_path_distance, SUM(ti_agg.google_duration) AS google_duration, SUM(ti_agg.reported_duration) AS reported_duration,
+				MAX(ti_agg.hhmember1) AS hhmember1, MAX(ti_agg.hhmember2) AS hhmember2, MAX(ti_agg.hhmember3) AS hhmember3, MAX(ti_agg.hhmember4) AS hhmember4, MAX(ti_agg.hhmember5) AS hhmember5, 
+				MAX(ti_agg.hhmember6) AS hhmember6, MAX(ti_agg.hhmember7) AS hhmember7, MAX(ti_agg.hhmember8) AS hhmember8, MAX(ti_agg.hhmember9) AS hhmember9, MAX(ti_agg.hhmember_none) AS hhmember_none, 
+				MAX(ti_agg.travelers_hh) AS travelers_hh, MAX(ti_agg.travelers_nonhh) AS travelers_nonhh, MAX(ti_agg.travelers_total) AS travelers_total				
+			FROM trip_ingredient as ti_agg WHERE ti_agg.trip_link > 0 GROUP BY ti_agg.personid, ti_agg.trip_link),
 		cte_wndw AS	
 		(SELECT DISTINCT 
-				etw.personid AS personid2,
-				etw.trip_link AS trip_link2,
-				FIRST_VALUE(etw.dest_purpose) OVER (PARTITION BY CONCAT(etw.personid,etw.trip_link) ORDER BY etw.tripnum DESC) AS dest_purpose,
-				FIRST_VALUE(etw.dest_name) OVER (PARTITION BY CONCAT(etw.personid,etw.trip_link) ORDER BY etw.tripnum DESC) AS dest_name,
-				FIRST_VALUE(etw.dest_address) OVER (PARTITION BY CONCAT(etw.personid,etw.trip_link) ORDER BY etw.tripnum DESC) AS dest_address,
-				FIRST_VALUE(etw.dest_lat) OVER (PARTITION BY CONCAT(etw.personid,etw.trip_link) ORDER BY etw.tripnum DESC) AS dest_lat,
-				FIRST_VALUE(etw.dest_lng) OVER (PARTITION BY CONCAT(etw.personid,etw.trip_link) ORDER BY etw.tripnum DESC) AS dest_lng,
-				FIRST_VALUE(etw.mode_egr) OVER (PARTITION BY CONCAT(etw.personid,etw.trip_link) ORDER BY etw.tripnum DESC) AS mode_egr,
-				--STRING_AGG(mode_1,',') OVER (PARTITION BY trip_link ORDER BY etw.tripnum ASC) AS modes,
+				ti_wndw.personid AS personid2,
+				ti_wndw.trip_link AS trip_link2,
+				FIRST_VALUE(ti_wndw.dest_purpose) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_purpose,
+				FIRST_VALUE(ti_wndw.dest_name) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_name,
+				FIRST_VALUE(ti_wndw.dest_address) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_address,
+				FIRST_VALUE(ti_wndw.dest_lat) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_lat,
+				FIRST_VALUE(ti_wndw.dest_lng) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_lng,
+				FIRST_VALUE(ti_wndw.mode_acc) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum ASC) AS mode_acc,
+				FIRST_VALUE(ti_wndw.mode_egr) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS mode_egr,
+				--STRING_AGG(mode_1,',') OVER (PARTITION BY trip_link ORDER BY ti_wndw.tripnum ASC) AS modes,
 				STUFF(
-					(SELECT ',' + CAST(STUFF(	COALESCE(',' + CAST(et1.mode_1 AS nvarchar), '') + 
-												COALESCE(',' + CAST(et1.mode_2 AS nvarchar), '') + 
-												COALESCE(',' + CAST(et1.mode_3 AS nvarchar), '') + 
-												COALESCE(',' + CAST(et1.mode_4 AS nvarchar), ''), 1, 1, '') AS VARCHAR(MAX)) AS [text()]
-					FROM eliminated_trip AS et1 
-					WHERE et1.personid = etw.personid AND et1.trip_link = etw.trip_link
-					ORDER BY etw.personid DESC, etw.tripnum DESC
+					(SELECT ',' + CAST(STUFF(	COALESCE(',' + CAST(ti1.mode_1 AS nvarchar), '') + 
+												COALESCE(',' + CAST(ti1.mode_2 AS nvarchar), '') + 
+												COALESCE(',' + CAST(ti1.mode_3 AS nvarchar), '') + 
+												COALESCE(',' + CAST(ti1.mode_4 AS nvarchar), ''), 1, 1, '') AS VARCHAR(MAX)) AS [text()]
+					FROM trip_ingredient AS ti1 
+					WHERE ti1.personid = ti_wndw.personid AND ti1.trip_link = ti_wndw.trip_link
+					ORDER BY ti_wndw.personid DESC, ti_wndw.tripnum DESC
 					FOR XML PATH('')), 1, 1, NULL) AS modes,	
-				--STRING_AGG(CONCAT_WS(',',etw.transit_system_1, etw.transit_system_2, etw.transit_system_3, etw.transit_system_4, etw.transit_system_5),',') OVER (PARTITION BY trip_link ORDER BY etw.tripnum ASC) AS transit_systems,
+				--STRING_AGG(CONCAT_WS(',',ti_wndw.transit_system_1, ti_wndw.transit_system_2, ti_wndw.transit_system_3, ti_wndw.transit_system_4, ti_wndw.transit_system_5),',') OVER (PARTITION BY trip_link ORDER BY ti_wndw.tripnum ASC) AS transit_systems,
 				STUFF(
-					(SELECT ',' + CAST(STUFF(	COALESCE(',' + CAST(et2.transit_system_1 AS nvarchar), '') + 
-												COALESCE(',' + CAST(et2.transit_system_2 AS nvarchar), '') + 
-												COALESCE(',' + CAST(et2.transit_system_3 AS nvarchar), '') + 
-												COALESCE(',' + CAST(et2.transit_system_4 AS nvarchar), '') + 
-												COALESCE(',' + CAST(et2.transit_system_5 AS nvarchar), ''), 1, 1, '') AS VARCHAR(MAX)) AS [text()]
-					FROM eliminated_trip AS et2
-					WHERE et2.personid = etw.personid AND et2.trip_link = etw.trip_link
-					ORDER BY etw.personid DESC, etw.tripnum DESC
+					(SELECT ',' + CAST(STUFF(	COALESCE(',' + CAST(ti2.transit_system_1 AS nvarchar), '') + 
+												COALESCE(',' + CAST(ti2.transit_system_2 AS nvarchar), '') + 
+												COALESCE(',' + CAST(ti2.transit_system_3 AS nvarchar), '') + 
+												COALESCE(',' + CAST(ti2.transit_system_4 AS nvarchar), '') + 
+												COALESCE(',' + CAST(ti2.transit_system_5 AS nvarchar), ''), 1, 1, '') AS VARCHAR(MAX)) AS [text()]
+					FROM trip_ingredient AS ti2
+					WHERE ti2.personid = ti_wndw.personid AND ti2.trip_link = ti_wndw.trip_link
+					ORDER BY ti_wndw.personid DESC, ti_wndw.tripnum DESC
 					FOR XML PATH('')), 1, 1, NULL) AS transit_systems,				
-				--STRING_AGG(CONCAT_WS(',',etw.transit_line_1, etw.transit_line_2, etw.transit_line_3, etw.transit_line_4, etw.transit_line_5),',') OVER (PARTITION BY trip_link ORDER BY etw.tripnum ASC) AS transit_lines	
+				--STRING_AGG(CONCAT_WS(',',ti_wndw.transit_line_1, ti_wndw.transit_line_2, ti_wndw.transit_line_3, ti_wndw.transit_line_4, ti_wndw.transit_line_5),',') OVER (PARTITION BY trip_link ORDER BY ti_wndw.tripnum ASC) AS transit_lines	
 				STUFF(
-					(SELECT ',' + CAST(STUFF(	COALESCE(',' + CAST(et3.transit_line_1 AS nvarchar), '') + 
-												COALESCE(',' + CAST(et3.transit_line_2 AS nvarchar), '') + 
-												COALESCE(',' + CAST(et3.transit_line_3 AS nvarchar), '') + 
-												COALESCE(',' + CAST(et3.transit_line_4 AS nvarchar), '') + 
-												COALESCE(',' + CAST(et3.transit_line_5 AS nvarchar), ''), 1, 1, '') AS VARCHAR(MAX)) AS [text()]
-					FROM eliminated_trip AS et3
-					WHERE et3.personid = etw.personid AND et3.trip_link = etw.trip_link
-					ORDER BY etw.personid DESC, etw.tripnum DESC
+					(SELECT ',' + CAST(STUFF(	COALESCE(',' + CAST(ti3.transit_line_1 AS nvarchar), '') + 
+												COALESCE(',' + CAST(ti3.transit_line_2 AS nvarchar), '') + 
+												COALESCE(',' + CAST(ti3.transit_line_3 AS nvarchar), '') + 
+												COALESCE(',' + CAST(ti3.transit_line_4 AS nvarchar), '') + 
+												COALESCE(',' + CAST(ti3.transit_line_5 AS nvarchar), ''), 1, 1, '') AS VARCHAR(MAX)) AS [text()]
+					FROM trip_ingredient AS ti3 JOIN trip AS t ON ti3.personid = t.personid AND ti3.trip_link = t.tripnum
+					WHERE ti3.personid = ti_wndw.personid AND ti3.trip_link = ti_wndw.trip_link
+					ORDER BY ti_wndw.personid DESC, ti_wndw.tripnum DESC
 					FOR XML PATH('')), 1, 1, NULL) AS transit_lines	
-			FROM eliminated_trip as etw)
+			FROM trip_ingredient as ti_wndw WHERE ti_wndw.trip_link > 0 )
 		SELECT cte_wndw.*, cte_agg.* INTO linked_trip
 			FROM cte_wndw JOIN cte_agg ON cte_wndw.personid2 = cte_agg.personid AND cte_wndw.trip_link2 = cte_agg.trip_link;
+		GO	
 
 		--update linked_trip to eliminate duplicates in modes, transit_systems, and transit_lines
 		UPDATE lt 
@@ -902,17 +909,49 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 				lt.transit_lines 	= dbo.TRIM(dbo.RgxReplace(lt.transit_lines,'(\b\d+\b),(?=\1)','',1))
 			FROM linked_trip AS lt;
 			
-		--handle access and egress modes: these should not be listed as major modes in the trip.	
-		UPDATE linked_trip	
-			SET modes = 
-				CASE 	WHEN EXISTS (SELECT 1 FROM STRING_SPLIT(lt.modes) WHERE VALUE IN(SELECT mode_id FROM transitmodes)) 
-							THEN X
-						WHEN EXISTS (SELECT 1 FROM STRING_SPLIT(lt.modes) WHERE VALUE IN(SELECT mode_id FROM automodes)
-							THEN Y
-							ELSE Z
-						END; 
-	
-		-- this update completes the linked trip by revising some elements of the first component.
+		-- Handle access and egress modes: these should not be listed as major modes in the trip.  
+		-- [Unfortunately, unions must be used here; otherwise the VALUE set from the dbo.Rgx table object gets confused among cte fields.]
+		WITH cte_acc_egr AS 
+		(	SELECT lt1.personid, lt1.trip_link, 'A' AS label, 'transit' AS trip_type,
+				(SELECT MAX(CAST(VALUE AS int)) FROM STRING_SPLIT(dbo.RgxExtract(lt1.modes,'^(\b(?:1|2|3|4|5|6|7|8|9|10|11|12|16|17|18|21|22|33|34|36|37|47)\b,?)+',1),',')) AS link_value
+			FROM linked_trip AS lt1 WHERE EXISTS (SELECT 1 FROM STRING_SPLIT(lt1.modes,',') WHERE VALUE IN(SELECT mode_id FROM transitmodes))
+			UNION ALL 
+			SELECT lt2.personid, lt2.trip_link, 'E' AS label, 'transit' AS trip_type,	
+				(SELECT MAX(CAST(VALUE AS int)) FROM STRING_SPLIT(dbo.RgxExtract(lt2.modes,'(,\b(?:1|2|3|4|5|6|7|8|9|10|11|12|16|17|18|21|22|33|34|36|37|47)\b)+$',1),',')) AS link_value 
+			FROM linked_trip AS lt2 WHERE EXISTS (SELECT 1 FROM STRING_SPLIT(lt2.modes,',') WHERE VALUE IN(SELECT mode_id FROM transitmodes))
+			UNION ALL 
+			SELECT lt3.personid, lt3.trip_link, 'A' AS label, 'auto' AS trip_type,
+				(SELECT MAX(CAST(VALUE AS int)) FROM STRING_SPLIT(dbo.RgxReplace(lt3.modes,'^(\b(?:1|2)\b,?)+','',1),',')) AS link_value
+			FROM linked_trip AS lt3 WHERE EXISTS (SELECT 1 FROM STRING_SPLIT(lt3.modes,',') WHERE VALUE IN(SELECT mode_id FROM automodes)) 
+								  AND NOT EXISTS (SELECT 1 FROM STRING_SPLIT(lt3.modes,',') WHERE VALUE IN(SELECT mode_id FROM transitmodes))
+			UNION ALL 
+			SELECT lt4.personid, lt4.trip_link, 'E' AS label, 'auto' AS trip_type,
+				(SELECT MAX(CAST(VALUE AS int)) FROM STRING_SPLIT(dbo.RgxReplace(lt4.modes,'^(\b(?:1|2)\b,?)+','',1),',')) AS link_value
+			FROM linked_trip AS lt4 WHERE EXISTS (SELECT 1 FROM STRING_SPLIT(lt4.modes,',') WHERE VALUE IN(SELECT mode_id FROM automodes)) 
+								  AND NOT EXISTS (SELECT 1 FROM STRING_SPLIT(lt4.modes,',') WHERE VALUE IN(SELECT mode_id FROM transitmodes))),
+	 	cte_mode (personid, trip_link, trip_type, mode_reduced) AS		
+		(	SELECT lt5.personid, lt5.trip_link, 'transit' AS trip_type,
+			(STUFF((SELECT ',' + CAST((Match) AS VARCHAR(MAX)) AS [text()] FROM dbo.RgxSplit(lt5.modes,',',1) WHERE (Match) IN(SELECT mode_id FROM transitmodes)
+					FOR XML PATH('')), 1, 1, NULL)) AS mode_reduced
+			FROM linked_trip AS lt5 WHERE EXISTS (SELECT 1 FROM STRING_SPLIT(lt5.modes,',') WHERE VALUE IN(SELECT mode_id FROM transitmodes))
+			UNION ALL
+			SELECT lt6.personid, lt6.trip_link, 'auto' AS trip_type,
+			(STUFF((SELECT ',' + CAST((Match) AS VARCHAR(MAX)) AS [text()] FROM dbo.RgxSplit(lt6.modes,',',1) WHERE (Match) IN(SELECT mode_id FROM automodes)
+					FOR XML PATH('')), 1, 1, NULL)) AS mode_reduced
+			FROM linked_trip AS lt6 WHERE EXISTS (SELECT 1 FROM STRING_SPLIT(lt6.modes,',') WHERE VALUE IN(SELECT mode_id FROM automodes)) 
+								  AND NOT EXISTS (SELECT 1 FROM STRING_SPLIT(lt6.modes,',') WHERE VALUE IN(SELECT mode_id FROM transitmodes)))
+		SELECT lt.modes, cte_mode.mode_reduced 
+			FROM linked_trip AS lt JOIN cte_mode.mode_reduced ON lt.personid = cte_mode.personid AND lt.trip_link = cte_mode.trip_link;
+
+
+		UPDATE lt 
+			SET lt.mode_acc = CASE 	WHEN cte_acc_egr.label = 'A' AND cte_acc_egr.link_value > COALESCE(lt.mode_acc,0) THEN cte_acc_egr.link_value ELSE lt.mode_acc END,
+				lt.mode_egr = CASE 	WHEN cte_acc_egr.label = 'E' AND cte_acc_egr.link_value > COALESCE(lt.mode_egr,0) THEN cte_acc_egr.link_value ELSE lt.mode_egr END,
+				lt.modes	= CASE 	WHEN cte_mode.mode_reduced IS NOT NULL THEN cte_mode.mode_reduced ELSE lt.modes END
+			FROM linked_trip AS lt JOIN cte_acc_egr ON lt.personid = cte_acc_egr.personid AND lt.trip_link = cte_acc_egr.trip_link WHERE cte_acc_egr.link_value IS NOT NULL
+				LEFT JOIN cte_mode ON lt.personid = cte_mode.personid AND lt.trip_link = cte_mode.trip_link WHERE cte_mode.link_value IS NOT NULL;
+			
+		-- this update completes the linked trip by revising some elements of the 1st component left in the trip table.		
 		UPDATE 	t
 			SET t.arrival_time_timestamp 	= lt.arrival_time_timestamp,
 				t.dest_purpose 				= lt.dest_purpose,
@@ -923,33 +962,34 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 				t.trip_path_distance		+= lt.trip_path_distance,
 				t.google_duration			+= lt.google_duration,
 				t.reported_duration			+= lt.reported_duration,
-				t.hhmember1					= COALESCE(t.hhmember1, lt.hhmember1),
-				t.hhmember2					= COALESCE(t.hhmember2, lt.hhmember2),	
-				t.hhmember3					= COALESCE(t.hhmember3, lt.hhmember3),
-				t.hhmember4					= COALESCE(t.hhmember4, lt.hhmember4),	
-				t.hhmember5					= COALESCE(t.hhmember5, lt.hhmember5),
-				t.hhmember6					= COALESCE(t.hhmember6, lt.hhmember6),	
-				t.hhmember7					= COALESCE(t.hhmember7, lt.hhmember7),
-				t.hhmember8					= COALESCE(t.hhmember8, lt.hhmember8),	
-				t.hhmember9					= COALESCE(t.hhmember9, lt.hhmember9),
-				t.hhmember_none				= COALESCE(t.hhmember_none, lt.hhmember_none),
-				t.travelers_hh				= (SELECT MAX(member) FROM (VALUES(t.travelers_hh, lt.travelers_hh) AS hhtravelers(member))),
-				t.travelers_nonhh			= (SELECT MAX(member) FROM (VALUES(t.travelers_nonhh, lt.travelers_nonhh) AS nonhhtravelers(member))),				
-				t.travelers_total			= (SELECT MAX(member) FROM (VALUES(t.travelers_total, lt.travelers_total) AS tottravelers(member)));
-				t.mode_1					= smth,
-				t.mode_2					= smth,
-				t.mode_3					= smth,
-				t.mode_4					= smth,
-				t.transit_system_1			= smth,
-				t.transit_system_2			= smth,
-				t.transit_system_3			= smth,
-				t.transit_system_4			= smth,
-				t.transit_system_5			= smth,
-				t.transit_line_1			= smth,
-				t.transit_line_2			= smth,
-				t.transit_line_3			= smth,
-				t.transit_line_4			= smth,
-				t.transit_line_5			= smth
+				t.hhmember1					= lt.hhmember1,
+				t.hhmember2					= lt.hhmember2,	
+				t.hhmember3					= lt.hhmember3,
+				t.hhmember4					= lt.hhmember4,	
+				t.hhmember5					= lt.hhmember5,
+				t.hhmember6					= lt.hhmember6,	
+				t.hhmember7					= lt.hhmember7,
+				t.hhmember8					= lt.hhmember8,	
+				t.hhmember9					= lt.hhmember9,
+				t.hhmember_none				= lt.hhmember_none,
+				t.travelers_hh				= lt.travelers_hh,
+				t.travelers_nonhh			= lt.travelers_nonhh,
+				t.travelers_total			= lt.travelers_total,
+			/* seems like there should be a way using a CTE or RgxSplit + PIVOT or the like to parse these in an operation rather than call it repeatedly */
+				t.mode_1					= (SELECT Match FROM dbo.RgxMatches(lt.modes,'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY),
+				t.mode_2					= (SELECT Match FROM dbo.RgxMatches(lt.modes,'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 1 ROWS FETCH NEXT 1 ROWS ONLY),
+				t.mode_3					= (SELECT Match FROM dbo.RgxMatches(lt.modes,'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 2 ROWS FETCH NEXT 1 ROWS ONLY),
+				t.mode_4					= (SELECT Match FROM dbo.RgxMatches(lt.modes,'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 3 ROWS FETCH NEXT 1 ROWS ONLY),
+				t.transit_system_1			= (SELECT Match FROM dbo.RgxMatches(lt.transit_systems,'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY),
+				t.transit_system_2			= (SELECT Match FROM dbo.RgxMatches(lt.transit_systems,'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 1 ROWS FETCH NEXT 1 ROWS ONLY),
+				t.transit_system_3			= (SELECT Match FROM dbo.RgxMatches(lt.transit_systems,'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 2 ROWS FETCH NEXT 1 ROWS ONLY),
+				t.transit_system_4			= (SELECT Match FROM dbo.RgxMatches(lt.transit_systems,'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 3 ROWS FETCH NEXT 1 ROWS ONLY),
+				t.transit_system_5			= (SELECT Match FROM dbo.RgxMatches(lt.transit_systems,'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 4 ROWS FETCH NEXT 1 ROWS ONLY),
+				t.transit_line_1			= (SELECT Match FROM dbo.RgxMatches(lt.transit_lines,'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY),
+				t.transit_line_2			= (SELECT Match FROM dbo.RgxMatches(lt.transit_lines,'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 1 ROWS FETCH NEXT 1 ROWS ONLY),
+				t.transit_line_3			= (SELECT Match FROM dbo.RgxMatches(lt.transit_lines,'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 2 ROWS FETCH NEXT 1 ROWS ONLY),
+				t.transit_line_4			= (SELECT Match FROM dbo.RgxMatches(lt.transit_lines,'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 3 ROWS FETCH NEXT 1 ROWS ONLY),
+				t.transit_line_5			= (SELECT Match FROM dbo.RgxMatches(lt.transit_lines,'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 4 ROWS FETCH NEXT 1 ROWS ONLY)
 			FROM trips AS t JOIN linked_trip AS lt ON t.personid = lt.person_id AND t.tripnum = lt.trip_link 
 			 
 	-- Revise access and/or egress when reported as a mode within a trip
