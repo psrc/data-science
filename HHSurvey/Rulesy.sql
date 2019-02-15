@@ -807,24 +807,30 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 				transit_systems nvarchar(MAX),
 				transit_lines 	nvarchar(MAX);
 		
-		-- deciding whether to apply the multi-field procedures (for modes, transit systems & transit lines) to all trips, not only linked components.
+
+		/*	These are MSSQL17 commands for the below--faster and clearer, once we upgrade.
+			CONCAT_WS(',',ti_wndw.transit_system_1, ti_wndw.transit_system_2, ti_wndw.transit_system_3, ti_wndw.transit_system_4, ti_wndw.transit_system_5)
+			CONCAT_WS(',',ti_wndw.transit_system_1, ti_wndw.transit_system_2, ti_wndw.transit_system_3, ti_wndw.transit_system_4, ti_wndw.transit_system_5)
+			CONCAT_WS(',',ti_wndw.transit_line_1, ti_wndw.transit_line_2, ti_wndw.transit_line_3, ti_wndw.transit_line_4, ti_wndw.transit_line_5)
+
+		*/
 		UPDATE trip
-				SET modes = STUFF(	COALESCE(',' + CAST(ti1.mode_acc AS nvarchar), '') +
-									COALESCE(',' + CAST(ti1.mode_1 	 AS nvarchar), '') + 
-									COALESCE(',' + CAST(ti1.mode_2 	 AS nvarchar), '') + 
-									COALESCE(',' + CAST(ti1.mode_3 	 AS nvarchar), '') + 
-									COALESCE(',' + CAST(ti1.mode_4 	 AS nvarchar), '') + 
-									COALESCE(',' + CAST(ti1.mode_egr AS nvarchar), ''), 1, 1, ''),
-		  transit_systems = STUFF(	COALESCE(',' + CAST(ti2.transit_system_1 AS nvarchar), '') + 
-									COALESCE(',' + CAST(ti2.transit_system_2 AS nvarchar), '') + 
-									COALESCE(',' + CAST(ti2.transit_system_3 AS nvarchar), '') + 
-									COALESCE(',' + CAST(ti2.transit_system_4 AS nvarchar), '') + 
-									COALESCE(',' + CAST(ti2.transit_system_5 AS nvarchar), ''), 1, 1, ''),
-			transit_lines = STUFF(	COALESCE(',' + CAST(ti3.transit_line_1 AS nvarchar), '') + 
-									COALESCE(',' + CAST(ti3.transit_line_2 AS nvarchar), '') + 
-									COALESCE(',' + CAST(ti3.transit_line_3 AS nvarchar), '') + 
-									COALESCE(',' + CAST(ti3.transit_line_4 AS nvarchar), '') + 
-									COALESCE(',' + CAST(ti3.transit_line_5 AS nvarchar), ''), 1, 1, '')							
+				SET modes = STUFF(	COALESCE(',' + CAST(timode_acc AS nvarchar), '') +
+									COALESCE(',' + CAST(mode_1 	 AS nvarchar), '') + 
+									COALESCE(',' + CAST(mode_2 	 AS nvarchar), '') + 
+									COALESCE(',' + CAST(mode_3 	 AS nvarchar), '') + 
+									COALESCE(',' + CAST(mode_4 	 AS nvarchar), '') + 
+									COALESCE(',' + CAST(mode_egr AS nvarchar), ''), 1, 1, ''),
+		  transit_systems = STUFF(	COALESCE(',' + CAST(transit_system_1 AS nvarchar), '') + 
+									COALESCE(',' + CAST(transit_system_2 AS nvarchar), '') + 
+									COALESCE(',' + CAST(transit_system_3 AS nvarchar), '') + 
+									COALESCE(',' + CAST(transit_system_4 AS nvarchar), '') + 
+									COALESCE(',' + CAST(transit_system_5 AS nvarchar), ''), 1, 1, ''),
+			transit_lines = STUFF(	COALESCE(',' + CAST(transit_line_1 AS nvarchar), '') + 
+									COALESCE(',' + CAST(transit_line_2 AS nvarchar), '') + 
+									COALESCE(',' + CAST(transit_line_3 AS nvarchar), '') + 
+									COALESCE(',' + CAST(transit_line_4 AS nvarchar), '') + 
+									COALESCE(',' + CAST(transit_line_5 AS nvarchar), ''), 1, 1, '')							
 
 		DROP TABLE IF EXISTS trip_ingredient;
 		SELECT TOP 1 *, 0 AS trip_link INTO trip_ingredient FROM trip;
@@ -895,21 +901,21 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 				FIRST_VALUE(ti_wndw.dest_lng) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_lng,
 				FIRST_VALUE(ti_wndw.mode_acc) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum ASC) AS mode_acc,
 				FIRST_VALUE(ti_wndw.mode_egr) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS mode_egr,
-				--STRING_AGG(mode_1,',') OVER (PARTITION BY trip_link ORDER BY ti_wndw.tripnum ASC) AS modes,
+				--STRING_AGG(ti_wnd.modes,',') OVER (PARTITION BY ti_wnd.trip_link ORDER BY ti_wndw.tripnum ASC) AS modes,
 				STUFF(
 					(SELECT ',' + ti1.modes
 					FROM trip_ingredient AS ti1 
 					WHERE ti1.personid = ti_wndw.personid AND ti1.trip_link = ti_wndw.trip_link
 					ORDER BY ti_wndw.personid DESC, ti_wndw.tripnum DESC
 					FOR XML PATH('')), 1, 1, NULL) AS modes,	
-				--STRING_AGG(CONCAT_WS(',',ti_wndw.transit_system_1, ti_wndw.transit_system_2, ti_wndw.transit_system_3, ti_wndw.transit_system_4, ti_wndw.transit_system_5),',') OVER (PARTITION BY trip_link ORDER BY ti_wndw.tripnum ASC) AS transit_systems,
+				--STRING_AGG(ti2.transit_systems,',') OVER (PARTITION BY ti_wnd.trip_link ORDER BY ti_wndw.tripnum ASC) AS transit_systems,
 				STUFF(
 					(SELECT ',' + ti2.transit_systems
 					FROM trip_ingredient AS ti2
 					WHERE ti2.personid = ti_wndw.personid AND ti2.trip_link = ti_wndw.trip_link
 					ORDER BY ti_wndw.personid DESC, ti_wndw.tripnum DESC
 					FOR XML PATH('')), 1, 1, NULL) AS transit_systems,				
-				--STRING_AGG(CONCAT_WS(',',ti_wndw.transit_line_1, ti_wndw.transit_line_2, ti_wndw.transit_line_3, ti_wndw.transit_line_4, ti_wndw.transit_line_5),',') OVER (PARTITION BY trip_link ORDER BY ti_wndw.tripnum ASC) AS transit_lines	
+				--STRING_AGG(ti_wnd.transit_lines,',') OVER (PARTITION BY trip_link ORDER BY ti_wndw.tripnum ASC) AS transit_lines	
 				STUFF(
 					(SELECT ',' + ti3.transit_lines
 					FROM trip_ingredient AS ti3 JOIN trip AS t ON ti3.personid = t.personid AND ti3.trip_link = t.tripnum
@@ -921,7 +927,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 			FROM cte_wndw JOIN cte_agg ON cte_wndw.personid2 = cte_agg.personid AND cte_wndw.trip_link2 = cte_agg.trip_link;
 		GO	
 
-		-- this update completes the linked trip by revising some elements of the 1st component left in the trip table.		
+		-- this update achieves trip linking via revising elements of the 1st component (purposely left in the trip table).		
 		UPDATE 	t
 			SET t.arrival_time_timestamp 	= lt.arrival_time_timestamp,
 				t.dest_purpose 				= lt.dest_purpose,
@@ -995,7 +1001,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 				t.mode_egr = CASE 	WHEN cte_acc_egr.label = 'E' THEN cte_acc_egr.link_value ELSE NULL END
 			FROM trip AS t JOIN cte_acc_egr ON t.personid = cte_acc_egr.personid AND t.tripnum = cte_acc_egr.tripnum WHERE cte_acc_egr.link_value IS NOT NULL;
 
-		-- Remove access/egress modes from 1) transit and 2) auto trip strings--not only at the ends, but also the middle.
+		-- Remove access/egress modes from 1) transit and 2) auto trip strings--not only at the ends, but also the middle. [QC this & be careful!]
 	 	WITH cte_mode AS		
 		(	SELECT t5.personid, t5.tripnum, 'transit' AS trip_type,
 			(STUFF((SELECT ',' + CAST((Match) AS VARCHAR(MAX)) AS [text()] FROM dbo.RgxSplit(t5.modes,',',1) WHERE (Match) IN(SELECT mode_id FROM transitmodes)
@@ -1111,7 +1117,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		t.park_ride_area_start, t.park_ride_area_end, t.park_ride_lot_start, t.park_ride_lot_end, t.park, t.park_type, t.park_pay,
 		t.toll, t.toll_pay, t.taxi_type, t.taxi_pay, t.bus_type, t.bus_pay, t.bus_cost_dk, t.ferry_type, t.ferry_pay, t.ferry_cost_dk, t.rail_type, t.rail_pay, t.rail_cost_dk, t.air_type, t.air_pay, t.airfare_cost_dk,
 		t.mode_acc, t.mode_egr, 1 AS psrc_inserted 
-	FROM list_passenger_trips as t --keep only those when the time midpoint of the CTE trip doesn't intersect any trip by the same person (whether they reported the other hhmembers or not)
+	FROM list_passenger_trips as t -- insert only when the time midpoint of the CTE trip doesn't intersect any trip by the same person; doesn't matter if an intersecting trip reports the other hhmembers or not.
         LEFT JOIN trip as compare_t ON t.passengerid = compare_t.personid AND 
 			DATEADD(Second, (DATEDIFF(Second, compare_t.depart_time_timestamp, compare_t.arrival_time_timestamp)/2), compare_t.depart_time_timestamp) 
             BETWEEN t.depart_time_timestamp AND t.arrival_time_timestamp
@@ -1212,7 +1218,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 			SELECT tripid, personid, tripnum, error_flag FROM error_flag_compilation;
 		GO
 
-/* STEP 5b. Correct for known error patterns */
+/* STEP 5b. Correct for known error patterns -- this portion left as an example, but substance moved earlier in Rulesy.
 
 		DROP TABLE IF EXISTS fixed;
 		CREATE TABLE fixed(tripid bigint, personid int, error_flag varchar(100));
@@ -1232,7 +1238,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		UPDATE tef	SET rulesy_fixed='yes'
 			FROM trip_error_flags AS tef JOIN fixed AS f ON tef.tripid=f.tripid AND tef.personid=f.personid AND tef.error_flag=f.error_flag;
 		DROP TABLE fixed;	 
-		GO
+		GO  */
 
 /* STEP 6. Impute missing fields [access/egress, etc] */
 	
