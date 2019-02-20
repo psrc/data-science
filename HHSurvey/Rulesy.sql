@@ -895,13 +895,14 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		SELECT cte_wndw.*, cte_agg.* INTO linked_trip
 			FROM cte_wndw JOIN cte_agg ON cte_wndw.personid2 = cte_agg.personid AND cte_wndw.trip_link2 = cte_agg.trip_link;
 
-		-->>> update linked_trip to eliminate duplicates in modes, transit_systems, and transit_lines before carrying out the link in the trip table.  This should be specific to transitmodes/automodes/ped
-		
-		UPDATE linked_trip
-			SET transit_systems = X,
-				transit_lines 	= Y
-			WHERE EXISTS (SELECT 1 FROM STRING_SPLIT(lt.modes) WHERE VALUE IN(SELECT mode_id FROM transitmodes));
-		
+		--update linked_trip to eliminate duplicates in modes, transit_systems, and transit_lines
+		UPDATE lt 
+			SET lt.modes			= dbo.TRIM(dbo.RgxReplace(lt.modes,'(-?\b\d+\b),(?=\1)','',1)),
+				lt.transit_systems 	= dbo.TRIM(dbo.RgxReplace(lt.transit_systems,'(\b\d+\b),(?=\1)','',1)), 
+				lt.transit_lines 	= dbo.TRIM(dbo.RgxReplace(lt.transit_lines,'(\b\d+\b),(?=\1)','',1))
+			FROM linked_trip AS lt;
+			
+		--handle access and egress modes: these should not be listed as major modes in the trip.	
 		UPDATE linked_trip	
 			SET modes = 
 				CASE 	WHEN EXISTS (SELECT 1 FROM STRING_SPLIT(lt.modes) WHERE VALUE IN(SELECT mode_id FROM transitmodes)) 
