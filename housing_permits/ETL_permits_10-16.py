@@ -12,3 +12,10 @@ import os
 
 
 
+DATA_PATH = r'J:\Projects\Permits\17Permit\database\10-16permits'
+my_tablename = 'REG10-16PMT'
+file_name = 'REG16PMT.txt'
+
+def read_data(DATA_PATH, COUNTY, file_name):
+    my_file = pd.DataFrame.from_csv(os.path.join(DATA_PATH, COUNTY, file_name), sep=',', index_col=None)
+    return my_file
