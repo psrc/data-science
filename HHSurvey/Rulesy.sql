@@ -336,13 +336,13 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		CREATE TABLE trip (
 			[hhid] [int] NOT NULL,
 			[personid] [int] NOT NULL,
-			[pernum] [int] NOT NULL,
+			[pernum] [int] NULL,
 			[tripid] bigint NOT NULL,
-			[tripnum] [int] NOT NULL,
-			[traveldate] date NOT NULL,
-			[daynum] [int] NOT NULL,
-			[dayofweek] [int] NOT NULL,
-			[hhgroup] [int] NOT NULL,
+			[tripnum] [int] NOT NULL DEFAULT 0,
+			[traveldate] date NULL,
+			[daynum] [int] NULL,
+			[dayofweek] [int] NULL,
+			[hhgroup] [int] NULL,
 			[copied_trip] [int] NULL,
 			[completed_at] datetime2 NULL,
 			[revised_at] datetime2 NULL,
@@ -641,16 +641,20 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		GO
 
 		ALTER TABLE trip --additional destination address fields
-			ADD origin_geom GEOMETRY NULL,
-				dest_geom GEOMETRY NULL,
-				dest_county	varchar(3) NULL,
-				dest_city	varchar(25) NULL,
-				dest_zip	varchar(5) NULL,
-				dest_is_home bit NULL, 
-				dest_is_work bit NULL,
-				psrc_inserted bit NULL,
-				revision_code nvarchar(MAX) NULL;
-		
+			ADD origin_geom 	GEOMETRY NULL,
+				dest_geom 		GEOMETRY NULL,
+				dest_county		varchar(3) NULL,
+				dest_city		varchar(25) NULL,
+				dest_zip		varchar(5) NULL,
+				dest_is_home	bit NULL, 
+				dest_is_work 	bit NULL,
+				modes 			nvarchar(MAX),
+				transit_systems nvarchar(MAX),
+				transit_lines 	nvarchar(MAX),				,
+				psrc_inserted 	bit NULL,
+				revision_code 	nvarchar(MAX) NULL;
+		GO
+						
 		/*ALTER TABLE household -- add home geometry
 			ADD home_geom GEOMETRY NULL;
 
@@ -802,20 +806,14 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 
 /* STEP 3.	Trip linking */
 
-		ALTER TABLE trip
-			ADD modes 			nvarchar(MAX),
-				transit_systems nvarchar(MAX),
-				transit_lines 	nvarchar(MAX);
-		
-
 		/*	These are MSSQL17 commands for the below--faster and clearer, once we upgrade.
-			CONCAT_WS(',',ti_wndw.transit_system_1, ti_wndw.transit_system_2, ti_wndw.transit_system_3, ti_wndw.transit_system_4, ti_wndw.transit_system_5)
-			CONCAT_WS(',',ti_wndw.transit_system_1, ti_wndw.transit_system_2, ti_wndw.transit_system_3, ti_wndw.transit_system_4, ti_wndw.transit_system_5)
-			CONCAT_WS(',',ti_wndw.transit_line_1, ti_wndw.transit_line_2, ti_wndw.transit_line_3, ti_wndw.transit_line_4, ti_wndw.transit_line_5)
-
+		UPDATE trip
+			SET modes 			= CONCAT_WS(',',ti_wndw.transit_system_1, ti_wndw.transit_system_2, ti_wndw.transit_system_3, ti_wndw.transit_system_4, ti_wndw.transit_system_5),
+				transit_systems = CONCAT_WS(',',ti_wndw.transit_system_1, ti_wndw.transit_system_2, ti_wndw.transit_system_3, ti_wndw.transit_system_4, ti_wndw.transit_system_5),
+				transit_lines 	= CONCAT_WS(',',ti_wndw.transit_line_1, ti_wndw.transit_line_2, ti_wndw.transit_line_3, ti_wndw.transit_line_4, ti_wndw.transit_line_5)
 		*/
 		UPDATE trip
-				SET modes = STUFF(	COALESCE(',' + CAST(timode_acc AS nvarchar), '') +
+				SET modes = STUFF(	COALESCE(',' + CAST(mode_acc AS nvarchar), '') +
 									COALESCE(',' + CAST(mode_1 	 AS nvarchar), '') + 
 									COALESCE(',' + CAST(mode_2 	 AS nvarchar), '') + 
 									COALESCE(',' + CAST(mode_3 	 AS nvarchar), '') + 
@@ -833,13 +831,13 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 									COALESCE(',' + CAST(transit_line_5 AS nvarchar), ''), 1, 1, '')							
 
 		DROP TABLE IF EXISTS trip_ingredient;
-		SELECT TOP 1 *, 0 AS trip_link INTO trip_ingredient FROM trip;
+		SELECT TOP 1 *, CAST(-1 AS int) AS trip_link INTO trip_ingredient FROM trip;
 		TRUNCATE TABLE trip_ingredient;
+		GO
 
 		-- remove component records into separate table, starting w/ 2nd component (i.e., first is left in trip table).  The criteria here determine which get considered components.
-		
 		DELETE next_trip  
-		OUTPUT DELETED.*, 0 AS trip_link INTO trip_ingredient
+		OUTPUT DELETED.*, CAST(0 AS int) AS trip_link INTO trip_ingredient
 		FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
 			WHERE 	trip.dest_is_home IS NULL AND trip.dest_is_work IS NULL AND 
 				((trip.dest_purpose = 60 AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 30)
@@ -858,7 +856,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		(SELECT ti1.tripid, MAX(ti1.trip_link) OVER(PARTITION BY ti1.personid ORDER BY ti1.tripnum ROWS UNBOUNDED PRECEDING) AS ref_link
 			FROM trip_ingredient AS ti1)
 		UPDATE ti
-			SET ti.trip_link = cte.ref_link - ti.personid
+			SET ti.trip_link = cte.ref_link
 			FROM trip_ingredient AS ti JOIN cte ON ti.tripid = cte.tripid
 			WHERE ti.trip_link = 0;	
 
@@ -866,11 +864,29 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		INSERT INTO trip_ingredient
 			SELECT t.*, t.tripnum AS trip_link FROM trip AS t JOIN trip_ingredient AS ti ON t.personid = ti.personid AND t.tripnum = ti.trip_link;
 
-		-- denote trips with too many components to be linked programmatically, for later examination (rare; typically requires judgment to identify actual stops).  
-		WITH cte AS (SELECT ti1.personid, ti1.trip_link, count(*) AS records FROM trip_ingredient as ti1 GROUP BY ti1.personid, ti1.trip_link HAVING count(*) > 5)
+		-- denote trips with too many components or other attributes suggesting multiple trips, for later examination.  
+		WITH cte AS 
+			(SELECT ti1.personid, ti1.trip_link
+				FROM trip_ingredient as ti1 GROUP BY ti1.personid, ti1.trip_link 
+				HAVING count(*) > 5
+			UNION ALL SELECT ti2.personid, ti2.trip_link	
+				FROM trip_ingredient as ti2 GROUP BY ti2.personid, ti2.trip_link
+				HAVING sum(CASE WHEN LEN(ti2.pool_start) 			<>0 THEN 1 ELSE 0 END) > 1
+					OR sum(CASE WHEN LEN(ti2.change_vehicles) 		<>0 THEN 1 ELSE 0 END) > 1
+					OR sum(CASE WHEN LEN(ti2.park_ride_area_start) 	<>0 THEN 1 ELSE 0 END) > 1
+					OR sum(CASE WHEN LEN(ti2.park_ride_area_end) 	<>0 THEN 1 ELSE 0 END) > 1
+					OR sum(CASE WHEN LEN(ti2.park_ride_lot_start) 	<>0 THEN 1 ELSE 0 END) > 1
+					OR sum(CASE WHEN LEN(ti2.park_ride_lot_end) 	<>0 THEN 1 ELSE 0 END) > 1
+					OR sum(CASE WHEN LEN(ti2.park_type) 			<>0 THEN 1 ELSE 0 END) > 1)
 		UPDATE ti
 			SET ti.trip_link = -1
 			FROM trip_ingredient AS ti JOIN cte ON cte.personid = ti.personid AND cte.trip_link = ti.trip_link;
+		GO
+
+		/*DELETE ti
+		OUTPUT DELETED.* INTO trip 
+		FROM trip_ingredient AS ti 
+		WHERE ti.trip_link = -1;*/
 
 		-- meld the trip_ingredients to create the fields that will populate the linked trip, and saves those as a separate table, 'linked_trip'.
 		DROP TABLE IF EXISTS linked_trip;
@@ -878,30 +894,50 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		WITH cte_agg AS
 		(SELECT ti_agg.personid,
 				ti_agg.trip_link,
-				MAX(ti_agg.arrival_time_timestamp) AS arrival_time_timestamp,
-				SUM(ti_agg.trip_path_distance) AS trip_path_distance, SUM(ti_agg.google_duration) AS google_duration, SUM(ti_agg.reported_duration) AS reported_duration,
-				MAX(ti_agg.hhmember1) AS hhmember1, MAX(ti_agg.hhmember2) AS hhmember2, MAX(ti_agg.hhmember3) AS hhmember3, MAX(ti_agg.hhmember4) AS hhmember4, MAX(ti_agg.hhmember5) AS hhmember5, 
-				MAX(ti_agg.hhmember6) AS hhmember6, MAX(ti_agg.hhmember7) AS hhmember7, MAX(ti_agg.hhmember8) AS hhmember8, MAX(ti_agg.hhmember9) AS hhmember9, MAX(ti_agg.hhmember_none) AS hhmember_none, 
-				MAX(ti_agg.travelers_hh) AS travelers_hh, MAX(ti_agg.travelers_nonhh) AS travelers_nonhh, MAX(ti_agg.travelers_total) AS travelers_total				
-			FROM trip_ingredient as ti_agg WHERE ti_agg.trip_link > 0 GROUP BY ti_agg.personid, ti_agg.trip_link),
+				MAX(ti_agg.arrival_time_timestamp) 	AS arrival_time_timestamp,		MAX(ti_agg.hhmember1) 	AS hhmember1, 
+				SUM(ti_agg.trip_path_distance) 		AS trip_path_distance, 			MAX(ti_agg.hhmember2) 	AS hhmember2, 
+				SUM(ti_agg.google_duration) 		AS google_duration, 			MAX(ti_agg.hhmember3) 	AS hhmember3, 
+				SUM(ti_agg.reported_duration) 		AS reported_duration,			MAX(ti_agg.hhmember4) 	AS hhmember4, 
+				MAX(ti_agg.travelers_hh) 			AS travelers_hh, 				MAX(ti_agg.hhmember5) 	AS hhmember5, 
+				MAX(ti_agg.travelers_nonhh) 		AS travelers_nonhh, 			MAX(ti_agg.hhmember6) 	AS hhmember6,
+				MAX(ti_agg.travelers_total) 		AS travelers_total,				MAX(ti_agg.hhmember7) 	AS hhmember7, 
+				MAX(ti_agg.hhmember_none) 			AS hhmember_none, 				MAX(ti_agg.hhmember8) 	AS hhmember8, 
+				MAX(ti_agg.pool_start)				AS pool_start, 					MAX(ti_agg.hhmember9) 	AS hhmember9, 
+				MAX(ti_agg.change_vehicles)			AS change_vehicles, 			MAX(ti_agg.park) 		AS park, 
+				MAX(ti_agg.park_ride_area_start)	AS park_ride_area_start, 		MAX(ti_agg.toll)		AS toll, 
+				MAX(ti_agg.park_ride_area_end)		AS park_ride_area_end, 			MAX(ti_agg.park_type)	AS park_type, 
+				MAX(ti_agg.park_ride_lot_start)		AS park_ride_lot_start, 		MAX(ti_agg.taxi_type)	AS taxi_type, 
+				MAX(ti_agg.park_ride_lot_end)		AS park_ride_lot_end, 			MAX(ti_agg.bus_type)	AS bus_type, 	
+				MAX(ti_agg.bus_cost_dk)				AS bus_cost_dk, 				MAX(ti_agg.ferry_type)	AS ferry_type, 
+				MAX(ti_agg.ferry_cost_dk)			AS ferry_cost_dk,				MAX(ti_agg.rail_type)	AS rail_type, 
+				MAX(ti_agg.rail_cost_dk)			AS rail_cost_dk, 				MAX(ti_agg.air_type)	AS air_type,	
+				MAX(ti_agg.airfare_cost_dk)			AS airfare_cost_dk
+			/*		(ti_agg.bus_pay)				AS bus_pay, 
+					(ti_agg.ferry_pay)				AS ferry_pay, 
+					(ti_agg.rail_pay)				AS rail_pay, 
+					(ti_agg.air_pay)				AS air_pay, 
+					(ti_agg.park_pay)				AS park_pay,
+					(ti_agg.toll_pay)				AS toll_pay, 
+					(ti_agg.taxi_pay)				AS taxi_pay 					
+				CASE WHEN (ti_agg.driver) ...							AS driver,*/
+						FROM trip_ingredient as ti_agg WHERE ti_agg.trip_link > 0 GROUP BY ti_agg.personid, ti_agg.trip_link),
 		cte_wndw AS	
-		(SELECT DISTINCT 
+		(SELECT DISTINCT
 				ti_wndw.personid AS personid2,
 				ti_wndw.trip_link AS trip_link2,
-				FIRST_VALUE(ti_wndw.dest_purpose) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_purpose,
-				FIRST_VALUE(ti_wndw.dest_name) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_name,
-				FIRST_VALUE(ti_wndw.dest_address) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_address,
-				FIRST_VALUE(ti_wndw.dest_county) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_county,
-				FIRST_VALUE(ti_wndw.dest_city) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_city,
-				FIRST_VALUE(ti_wndw.dest_zip) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_zip,
-				FIRST_VALUE(ti_wndw.dest_is_home) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_is_home,
-				FIRST_VALUE(ti_wndw.dest_is_work) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_is_work,
-				FIRST_VALUE(ti_wndw.dest_geom) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_geom,
-				FIRST_VALUE(ti_wndw.dest_lat) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_lat,
-				FIRST_VALUE(ti_wndw.dest_lng) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_lng,
-				FIRST_VALUE(ti_wndw.mode_acc) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum ASC) AS mode_acc,
-				FIRST_VALUE(ti_wndw.mode_egr) OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS mode_egr,
-				--STRING_AGG(ti_wnd.modes,',') OVER (PARTITION BY ti_wnd.trip_link ORDER BY ti_wndw.tripnum ASC) AS modes,
+				FIRST_VALUE(ti_wndw.dest_purpose) 	OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_purpose,
+				FIRST_VALUE(ti_wndw.dest_name) 		OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_name,
+				FIRST_VALUE(ti_wndw.dest_address) 	OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_address,
+				FIRST_VALUE(ti_wndw.dest_county) 	OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_county,
+				FIRST_VALUE(ti_wndw.dest_city) 		OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_city,
+				FIRST_VALUE(ti_wndw.dest_zip) 		OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_zip,
+				FIRST_VALUE(ti_wndw.dest_is_home) 	OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_is_home,
+				FIRST_VALUE(ti_wndw.dest_is_work) 	OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_is_work,
+				FIRST_VALUE(ti_wndw.dest_lat) 		OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_lat,
+				FIRST_VALUE(ti_wndw.dest_lng) 		OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_lng,
+				FIRST_VALUE(ti_wndw.mode_acc) 		OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum ASC)  AS mode_acc,
+				FIRST_VALUE(ti_wndw.mode_egr) 		OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS mode_egr,
+				--STRING_AGG(ti_wnd.modes,',') 		OVER (PARTITION BY ti_wnd.trip_link ORDER BY ti_wndw.tripnum ASC) AS modes,
 				STUFF(
 					(SELECT ',' + ti1.modes
 					FROM trip_ingredient AS ti1 
@@ -929,39 +965,33 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 
 		-- this update achieves trip linking via revising elements of the 1st component (purposely left in the trip table).		
 		UPDATE 	t
-			SET t.arrival_time_timestamp 	= lt.arrival_time_timestamp,
-				t.dest_purpose 				= lt.dest_purpose,
-				t.dest_name 				= lt.dest_name,
-				t.dest_address				= lt.dest_address,
-				t.dest_lat					= lt.dest_lat,
-				t.dest_lng					= lt.dest_lng,
-				t.trip_path_distance		+= lt.trip_path_distance,
-				t.google_duration			+= lt.google_duration,
-				t.reported_duration			+= lt.reported_duration,
-				t.hhmember1					= lt.hhmember1,
-				t.hhmember2					= lt.hhmember2,	
-				t.hhmember3					= lt.hhmember3,
-				t.hhmember4					= lt.hhmember4,	
-				t.hhmember5					= lt.hhmember5,
-				t.hhmember6					= lt.hhmember6,	
-				t.hhmember7					= lt.hhmember7,
-				t.hhmember8					= lt.hhmember8,	
-				t.hhmember9					= lt.hhmember9,
-				t.hhmember_none				= lt.hhmember_none,
-				t.travelers_hh				= lt.travelers_hh,
-				t.travelers_nonhh			= lt.travelers_nonhh,
-				t.travelers_total			= lt.travelers_total,
-				t.dest_county				= lt.dest_county,
-				t.dest_city					= lt.dest_city,
-				t.dest_zip					= lt.dest_zip,
-				t.dest_is_home				= lt.dest_is_home,
-				t.dest_is_work				= lt.dest_is_work,
-				t.dest_geom					= lt.dest_geom,
-				t.modes						= lt.modes,
-				t.transit_systems			= lt.transit_systems,
-				t.transit_lines				= lt.transit_lines,
-				t.revision_code 			= CONCAT(t.revision_code, '5,')
-			FROM trip AS t JOIN linked_trip AS lt ON t.personid = lt.person_id AND t.tripnum = lt.trip_link 
+			SET t.dest_purpose 		= lt.dest_purpose,	
+				t.dest_address		= lt.dest_address,					t.dest_name 	= lt.dest_name,	
+				t.transit_systems	= lt.transit_systems,				t.dest_city		= lt.dest_city,
+				t.transit_lines		= lt.transit_lines,					t.dest_county	= lt.dest_county,
+				t.modes				= lt.modes,							t.dest_zip		= lt.dest_zip,
+				t.dest_is_home		= lt.dest_is_home,					t.dest_lat		= lt.dest_lat,
+				t.dest_is_work		= lt.dest_is_work,					t.dest_lng		= lt.dest_lng,
+											
+				t.arrival_time_timestamp = lt.arrival_time_timestamp,	t.hhmember1 	= lt.hhmember1, 
+				t.trip_path_distance 	= lt.trip_path_distance, 		t.hhmember2 	= lt.hhmember2, 
+				t.google_duration 		= lt.google_duration, 			t.hhmember3 	= lt.hhmember3, 
+				t.reported_duration 	= lt.reported_duration,			t.hhmember4 	= lt.hhmember4, 
+				t.travelers_hh 			= lt.travelers_hh, 				t.hhmember5 	= lt.hhmember5, 
+				t.travelers_nonhh 		= lt.travelers_nonhh, 			t.hhmember6 	= lt.hhmember6,
+				t.travelers_total 		= lt.travelers_total,			t.hhmember7 	= lt.hhmember7, 
+				t.hhmember_none 		= lt.hhmember_none, 			t.hhmember8 	= lt.hhmember8, 
+				t.pool_start			= lt.pool_start, 				t.hhmember9 	= lt.hhmember9, 
+				t.change_vehicles		= lt.change_vehicles, 			t.park 			= lt.park, 
+				t.park_ride_area_start	= lt.park_ride_area_start, 		t.toll			= lt.toll, 
+				t.park_ride_area_end	= lt.park_ride_area_end, 		t.park_type		= lt.park_type, 
+				t.park_ride_lot_start	= lt.park_ride_lot_start, 		t.taxi_type		= lt.taxi_type, 
+				t.park_ride_lot_end		= lt.park_ride_lot_end, 		t.bus_type		= lt.bus_type, 	
+																		t.ferry_type	= lt.ferry_type, 
+																		t.rail_type		= lt.rail_type, 
+																		t.air_type		= lt.air_type,	
+				t.revision_code 		= CONCAT(t.revision_code, '5,')
+			FROM trip AS t JOIN linked_trip AS lt ON t.personid = lt.personid AND t.tripnum = lt.trip_link 
 
 /* STEP 4.	Mode number standardization, including access and egress characterization */
 
@@ -1098,25 +1128,26 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
         UNION ALL SELECT    hhmember7 as passengerid, * FROM trip WHERE hhmember7 IS NOT NULL AND hhmember7 <> personid
         UNION ALL SELECT    hhmember8 as passengerid, * FROM trip WHERE hhmember8 IS NOT NULL AND hhmember8 <> personid
         UNION ALL SELECT    hhmember9 as passengerid, * FROM trip WHERE hhmember9 IS NOT NULL AND hhmember9 <> personid)
-    INSERT INTO trip(hhid, personid, 
+    INSERT INTO trip
+		(hhid, personid, pernum,
 		depart_time_timestamp, arrival_time_timestamp,
 		dest_name, dest_address, dest_lat, dest_lng,
 		trip_path_distance, google_duration, reported_duration,
 		hhmember1, hhmember2, hhmember3, hhmember4, hhmember5, hhmember6, hhmember7, hhmember8, hhmember9, hhmember_none, travelers_hh, travelers_nonhh, travelers_total,
-		mode_1, mode_2, mode_3, mode_4, change_vehicles, transit_system_1, transit_system_2, transit_system_3,
+		mode_acc, mode_egr, mode_1, mode_2, mode_3, mode_4, change_vehicles, transit_system_1, transit_system_2, transit_system_3,
 		park_ride_area_start, park_ride_area_end, park_ride_lot_start, park_ride_lot_end, park, park_type, park_pay,
 		toll, toll_pay, taxi_type, taxi_pay, bus_type, bus_pay, bus_cost_dk, ferry_type, ferry_pay, ferry_cost_dk, rail_type, rail_pay, rail_cost_dk, air_type, air_pay, airfare_cost_dk,
-		mode_acc, mode_egr, psrc_inserted)
-	SELECT -- select fields necessary for new trip records
-		t.hhid, t.passengerid AS personid, 
+		origin_geom, origin_lat, origin_lng, dest_geom, dest_county, dest_city, dest_zip, dest_is_home, dest_is_work, psrc_inserted, revision_code)
+	SELECT -- select fields necessary for new trip records	
+		t.hhid, t.passengerid AS personid, CAST(RIGHT(t.personid,2) AS int) AS pernum, 
 		t.depart_time_timestamp, t.arrival_time_timestamp,
 		t.dest_name, t.dest_address, t.dest_lat, t.dest_lng,
 		t.trip_path_distance, t.google_duration, t.reported_duration,
 		t.hhmember1, t.hhmember2, t.hhmember3, t.hhmember4, t.hhmember5, t.hhmember6, t.hhmember7, t.hhmember8, t.hhmember9, t.hhmember_none, t.travelers_hh, t.travelers_nonhh, t.travelers_total,
-		t.mode_1, t.mode_2, t.mode_3, t.mode_4, t.change_vehicles, t.transit_system_1, t.transit_system_2, t.transit_system_3,
+		t.mode_acc, t.mode_egr, t.mode_1, t.mode_2, t.mode_3, t.mode_4, t.change_vehicles, t.transit_system_1, t.transit_system_2, t.transit_system_3,
 		t.park_ride_area_start, t.park_ride_area_end, t.park_ride_lot_start, t.park_ride_lot_end, t.park, t.park_type, t.park_pay,
 		t.toll, t.toll_pay, t.taxi_type, t.taxi_pay, t.bus_type, t.bus_pay, t.bus_cost_dk, t.ferry_type, t.ferry_pay, t.ferry_cost_dk, t.rail_type, t.rail_pay, t.rail_cost_dk, t.air_type, t.air_pay, t.airfare_cost_dk,
-		t.mode_acc, t.mode_egr, 1 AS psrc_inserted 
+		t.origin_geom, t.origin_lat, t.origin_lng, t.dest_geom, t.dest_county, t.dest_city, t.dest_zip, t.dest_is_home, t.dest_is_work, 1 AS psrc_inserted, CONCAT(t.revision_code, '6,') AS revision_code
 	FROM list_passenger_trips as t -- insert only when the time midpoint of the CTE trip doesn't intersect any trip by the same person; doesn't matter if an intersecting trip reports the other hhmembers or not.
         LEFT JOIN trip as compare_t ON t.passengerid = compare_t.personid AND 
 			DATEADD(Second, (DATEDIFF(Second, compare_t.depart_time_timestamp, compare_t.arrival_time_timestamp)/2), compare_t.depart_time_timestamp) 
@@ -1147,70 +1178,85 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 					FROM hhts_agecodes AS age JOIN person AS p ON age.agecode = p.age
 						JOIN trip AS t1 ON p.personid = t1.personid
 					WHERE t1.driver = 1 AND p.age BETWEEN 1 AND 3
+
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum, 					'unlicensed driver' as error_flag
 				FROM trip JOIN person AS p ON p.personid=trip.personid
 				WHERE p.license = 3 AND trip.driver=1
+
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum, 					'non-worker reporting work trip' as error_flag
 				FROM trip JOIN person AS p ON p.personid=trip.personid
 				WHERE p.worker = 0 AND trip.dest_purpose in(10,11,14)
+
 			UNION ALL SELECT t.tripid, t.personid, t.tripnum, 							'speed unreasonably high' as error_flag
 				FROM trip AS t									
 				WHERE 	(t.mode_1 = 1 AND t.speed_mph > 20)
 					OR 	(t.mode_1 = 2 AND t.speed_mph > 40)
 					OR 	((t.mode_1 between 3 and 52 AND t.mode_1 <> 31) AND t.speed_mph > 85)
 					OR 	(t.speed_mph > 600)	
+
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum,					'no activity time prior to next departure' as error_flag
 				FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 =next_trip.tripnum
 				WHERE DATEDIFF(Second, trip.depart_time_timestamp, next_trip.depart_time_timestamp) < 60
+
 			UNION ALL SELECT next_trip.tripid, next_trip.personid, next_trip.tripnum,	'no activity time since prior arrival' as error_flag
 				FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 =next_trip.tripnum
 				WHERE DATEDIFF(Second, trip.depart_time_timestamp, next_trip.depart_time_timestamp) < 60
+
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum,					'identical location as next trip' as error_flag
 				FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 =next_trip.tripnum
-				WHERE trip.geom.STDistance(next_trip.geom) =0
+				WHERE trip.dest_geom.STDistance(next_trip.dest_geom) =0
+
 			UNION ALL SELECT next_trip.tripid, next_trip.personid, next_trip.tripnum,	'identical location as prior trip' as error_flag
 				FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 =next_trip.tripnum
-				WHERE trip.geom.STDistance(next_trip.geom) =0
-			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum,					'time overlap with another trip' as error_flag
+				WHERE trip.dest_geom.STDistance(next_trip.dest_geom) =0
+
+			UNION ALL (SELECT trip.tripid, trip.personid, trip.tripnum,					'time overlap with another trip' as error_flag
 				FROM trip JOIN trip AS compare_t ON trip.personid=compare_t.personid AND trip.tripnum + 1 =compare_t.tripnum
 				WHERE DATEADD(Second, (DATEDIFF(Second, compare_t.depart_time_timestamp, compare_t.arrival_time_timestamp)/2), compare_t.depart_time_timestamp) 
 					BETWEEN trip.depart_time_timestamp AND trip.arrival_time_timestamp AND trip.tripnum < compare_t.tripnum
-			UNION ALL SELECT compare_t.tripid, compare_t.personid, compare_t.tripnum,	'time overlap with another trip' as error_flag
+
+			UNION SELECT compare_t.tripid, compare_t.personid, compare_t.tripnum,	'time overlap with another trip' as error_flag
 				FROM trip JOIN trip AS compare_t ON trip.personid=compare_t.personid AND trip.tripnum + 1 =compare_t.tripnum
 				WHERE DATEADD(Second, (DATEDIFF(Second, compare_t.depart_time_timestamp, compare_t.arrival_time_timestamp)/2), compare_t.depart_time_timestamp) 
-					BETWEEN trip.depart_time_timestamp AND trip.arrival_time_timestamp AND trip.tripnum < compare_t.tripnum
+					BETWEEN trip.depart_time_timestamp AND trip.arrival_time_timestamp AND trip.tripnum < compare_t.tripnum)
+
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum,					'same transit line listed multiple times' as error_flag
 				FROM trip
     			WHERE EXISTS(SELECT count(*) 
 								FROM (VALUES(trip.transit_line_1),(trip.transit_line_2),(trip.transit_line_3),(trip.transit_line_4),(trip.transit_line_5)) AS transitline(member) 
 								WHERE member IS NOT NULL GROUP BY member HAVING count(*) > 1)
+
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum,					'non-home trip purpose, destination home' as error_flag
-				FROM trip AS t
-				WHERE t.dest_purpose <> 1 AND t.dest_is_home = 1
+				FROM trip
+				WHERE trip.dest_purpose <> 1 AND trip.dest_is_home = 1
+
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum,					'home or work trip purpose, destination elsewhere' as error_flag
-				FROM trip AS t
+				FROM trip
 				WHERE (trip.dest_purpose <> 1 and trip.dest_is_home = 1) OR (trip.dest_purpose <> 10 and trip.dest_is_work = 1)
+
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum,					'missing next trip link' as error_flag
 			FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 =next_trip.tripnum
 				WHERE ABS(trip.dest_lat - next_trip.origin_lat) >.0045  --roughly 500m difference or more, using degrees
+
 			UNION ALL SELECT next_trip.tripid, next_trip.personid, next_trip.tripnum,	'missing previous trip link' as error_flag
 			FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 =next_trip.tripnum
 				WHERE ABS(trip.dest_lat - next_trip.origin_lat) >.0045	--roughly 500m difference or more, using degrees
+
 			UNION ALL SELECT next_trip.tripid, next_trip.personid, next_trip.tripnum,	'starts from non-home location' as error_flag
 			FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 =next_trip.tripnum
 				WHERE DATEDIFF(Day, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) = 1 --first trip of the day
 					AND dbo.TRIM(next_trip.origin_name)<>'HOME' 
 					AND DATEPART(Hour, next_trip.depart_time_timestamp) > 1  -- Night owls typically home before 2am
+
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum,					'unusually long duration at destination' as error_flag
 				FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 =next_trip.tripnum
 					WHERE   (trip.dest_purpose IN(6,10,11,12,14)    			AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) > 720)
     					OR  (trip.dest_purpose IN(30,33,34,50)      			AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) > 180)
    						OR  (trip.dest_purpose IN(32,51,52,53,54,56,60,61,62) 	AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) > 300)
+
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum, 					'suspected drop-off or pick-up coded as school trip' as error_flag
-				FROM trip 
-					JOIN person ON trip.personid=person.personid 
-					JOIN trip as next_trip ON trip.personid=next_trip.personid
-				WHERE trip.dest_purpose = 6 
+				FROM trip JOIN trip as next_trip ON trip.personid=next_trip.personid JOIN person ON trip.personid=person.personid 					
+				WHERE 	trip.dest_purpose = 6 
 					AND trip.tripnum + 1 = next_trip.tripnum
 					AND ((person.student NOT IN(2,3,4))
 						OR (DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 20)))
