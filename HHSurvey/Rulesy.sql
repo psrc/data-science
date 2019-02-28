@@ -706,7 +706,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 				OR EXISTS (SELECT 1 FROM trip AS t_skip WHERE t.personid = t_skip.personid GROUP BY personid HAVING count(tripnum)<>max(tripnum));
 		END
 		GO
-		EXEC tripnum_update;
+		EXECUTE tripnum_update;
 
 /* STEP 2.  Parse/Fill missing address fields */
 
@@ -756,7 +756,11 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 				AND trip.dest_geom.STIntersects(person.work_geom.STBuffer(0.0009))=1;
 
 	--Reclassify purpose (used in later steps)
-
+		
+		DROP PROCEDURE IF EXISTS dest_purpose_updates;
+		GO
+		CREATE PROCEDURE dest_purpose_updates AS 
+		BEGIN
 			UPDATE trip --revises purpose field for return portion of a single stop loop trip 
 				SET trip.dest_purpose = (CASE WHEN trip.dest_is_home = 1 THEN 1 WHEN trip.dest_is_work = 1 THEN 10 ELSE trip.dest_purpose END), trip.revision_code = CONCAT(trip.revision_code,'1,')
 				FROM trip 
@@ -802,7 +806,9 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 			UPDATE trip		SET dest_purpose = 51, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'dog',1) = 1 AND dbo.RgxFind(dest_name,'(walk|park)',1) = 1;
 			UPDATE trip		SET dest_purpose = 51, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'park',1) = 1 AND dbo.RgxFind(dest_name,'(parking|ride)',1) = 0;
 			UPDATE trip		SET dest_purpose = 54, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'church',1) = 1; 
+		END
 		GO
+		EXECUTE dest_purpose_updates;
 
 /* STEP 3.	Trip linking */
 
@@ -862,7 +868,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 
 		-- add the 1st component without deleting it from the trip table.
 		INSERT INTO trip_ingredient
-			SELECT DISTINCT t.*, t.tripnum AS trip_link FROM trip AS t JOIN trip_ingredient AS ti ON t.personid = ti.personid AND t.tripnum = ti.trip_link AND t.tripnum = ti.tripnum - 1;
+			SELECT t.*, t.tripnum AS trip_link FROM trip AS t JOIN trip_ingredient AS ti ON t.personid = ti.personid AND t.tripnum = ti.trip_link AND t.tripnum = ti.tripnum - 1;
 
 		-- denote trips with too many components or other attributes suggesting multiple trips, for later examination.  
 		WITH cte AS 
@@ -879,7 +885,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 					OR sum(CASE WHEN LEN(ti2.park_ride_lot_end) 	<>0 THEN 1 ELSE 0 END) > 1
 					OR sum(CASE WHEN LEN(ti2.park_type) 			<>0 THEN 1 ELSE 0 END) > 1)
 		UPDATE ti
-			SET ti.trip_link = -1
+			SET ti.trip_link = -1 * ti.trip_link
 			FROM trip_ingredient AS ti JOIN cte ON cte.personid = ti.personid AND cte.trip_link = ti.trip_link;
 		GO
 
@@ -1002,7 +1008,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 				t.transit_lines 	= dbo.TRIM(dbo.RgxReplace(t.transit_lines,'(\b\d+\b),(?=\1)','',1))
 			FROM trip AS t;
 
-		EXEC tripnum_update; 
+		EXECUTE tripnum_update; 
 				
 		UPDATE trip SET mode_acc = NULL, mode_egr = NULL;	-- Clears what was stored as access or egress; those values are still part of the chain captured in the concatenated 'modes' field.
 
@@ -1065,69 +1071,28 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 				t.transit_line_5	= (SELECT Match FROM dbo.RgxMatches(t.transit_lines,	'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 4 ROWS FETCH NEXT 1 ROWS ONLY)
 			FROM trip AS t;
 			 
-/*  Should be able to get rid of this with the more extensive mode recharacterization script above
-	-- Revise access and/or egress when reported as a mode within a trip
-
-		DROP PROCEDURE IF EXISTS within_trip_access_egress;
-		GO
-		CREATE PROCEDURE within_trip_access_egress AS
-		BEGIN
-			UPDATE t -- correct access in all cases.
-				SET t.mode_acc = CASE WHEN t.mode_acc > t.mode_1 THEN t.mode_acc ELSE t.mode_1 END, 
-							t.mode_1 = t.mode_2,
-							t.mode_2 = t.mode_3,
-							t.mode_3 = t.mode_4,
-							t.mode_4 = NULL			
-				FROM trip AS t
-				WHERE 	((t.mode_1 NOT IN(SELECT mode_id FROM transitmodes)) 	-- for transitmodes, other modes are considered access/egress
-							AND EXISTS(SELECT 1 FROM (VALUES(t.mode_2),(t.mode_3),(t.mode_4)) AS modeset(member) WHERE member IN(SELECT mode_id FROM transitmodes)))
-					OR ((t.mode_1 NOT IN(SELECT mode_id FROM automodes)) 	-- for automodes, other modes are considered access/egress
-							AND EXISTS(SELECT 1 FROM (VALUES(t.mode_2),(t.mode_3),(t.mode_4)) AS modeset(member) WHERE member IN(SELECT mode_id FROM automodes)));
-
-			UPDATE t -- correct egress from mode_4
-				SET t.mode_egr = CASE WHEN t.mode_egr > t.mode_4 THEN t.mode_egr ELSE t.mode_4 END, 
-					t.mode_4 = NULL
-				FROM trip AS t
-				WHERE t.mode_4 IS NOT NULL AND
-						(t.mode_4 NOT IN(SELECT mode_id FROM transitmodes)
-							AND EXISTS(SELECT 1 FROM (VALUES(t.mode_1),(t.mode_2),(t.mode_3)) AS modeset(member) WHERE member IN(SELECT mode_id FROM transitmodes)))
-					OR 	(t.mode_4 NOT IN(SELECT mode_id FROM automodes)
-							AND EXISTS(SELECT 1 FROM (VALUES(t.mode_1),(t.mode_2),(t.mode_3)) AS modeset(member) WHERE member IN(SELECT mode_id FROM automodes)));
-
-			UPDATE t -- correct egress from mode_3
-				SET t.mode_egr = CASE WHEN t.mode_egr > t.mode_3 THEN t.mode_egr ELSE t.mode_3 END, 
-					t.mode_3 = NULL
-				FROM trip AS t
-				WHERE t.mode_3 IS NOT NULL AND t.mode_3 IS NULL AND
-						(t.mode_3 NOT IN(SELECT mode_id FROM transitmodes)
-							AND EXISTS(SELECT 1 FROM (VALUES(t.mode_1),(t.mode_2)) AS modeset(member) WHERE member IN(SELECT mode_id FROM transitmodes)))
-					OR 	(t.mode_4 NOT IN(SELECT mode_id FROM automodes)
-							AND EXISTS(SELECT 1 FROM (VALUES(t.mode_1),(t.mode_2)) AS modeset(member) WHERE member IN(SELECT mode_id FROM automodes)));
-
-			UPDATE t -- correct egress from mode_2
-				SET t.mode_egr = CASE WHEN t.mode_egr > t.mode_2 THEN t.mode_egr ELSE t.mode_2 END, 
-					t.mode_2 = NULL
-				FROM trip AS t
-				WHERE t.mode_2 IS NOT NULL AND t.mode_3 IS NULL AND
-						(t.mode_2 NOT IN(SELECT mode_id FROM transitmodes) AND t.mode_1 IN(SELECT mode_id FROM transitmodes))
-					OR 	(t.mode_4 NOT IN(SELECT mode_id FROM automodes) AND t.mode_1 IN(SELECT mode_id FROM automodes));
-			END
-			GO
-
-		EXEC within_trip_access_egress;*/
-
 /* STEP 5. Insert trips reported by another traveler but not reported by the passenger */
 
-    WITH list_passenger_trips AS --create CTE set of all passenger trips
-        (SELECT             hhmember1 as passengerid, * FROM trip WHERE hhmember1 IS NOT NULL AND hhmember1 <> personid
-        UNION ALL SELECT    hhmember2 as passengerid, * FROM trip WHERE hhmember2 IS NOT NULL AND hhmember2 <> personid
-        UNION ALL SELECT    hhmember3 as passengerid, * FROM trip WHERE hhmember3 IS NOT NULL AND hhmember3 <> personid
-        UNION ALL SELECT    hhmember4 as passengerid, * FROM trip WHERE hhmember4 IS NOT NULL AND hhmember4 <> personid
-        UNION ALL SELECT    hhmember5 as passengerid, * FROM trip WHERE hhmember5 IS NOT NULL AND hhmember5 <> personid
-        UNION ALL SELECT    hhmember6 as passengerid, * FROM trip WHERE hhmember6 IS NOT NULL AND hhmember6 <> personid
-        UNION ALL SELECT    hhmember7 as passengerid, * FROM trip WHERE hhmember7 IS NOT NULL AND hhmember7 <> personid
-        UNION ALL SELECT    hhmember8 as passengerid, * FROM trip WHERE hhmember8 IS NOT NULL AND hhmember8 <> personid
-        UNION ALL SELECT    hhmember9 as passengerid, * FROM trip WHERE hhmember9 IS NOT NULL AND hhmember9 <> personid)
+   DROP TABLE IF EXISTS silent_passenger_trip;
+   GO
+   WITH cte AS --create CTE set of passenger trips
+        (         SELECT tripid, pernum AS respondent, hhmember1 as passengerid FROM trip WHERE hhmember1 IS NOT NULL AND hhmember1 <> personid
+        UNION ALL SELECT tripid, pernum AS respondent, hhmember2 as passengerid FROM trip WHERE hhmember2 IS NOT NULL AND hhmember2 <> personid
+        UNION ALL SELECT tripid, pernum AS respondent, hhmember3 as passengerid FROM trip WHERE hhmember3 IS NOT NULL AND hhmember3 <> personid
+        UNION ALL SELECT tripid, pernum AS respondent, hhmember4 as passengerid FROM trip WHERE hhmember4 IS NOT NULL AND hhmember4 <> personid
+        UNION ALL SELECT tripid, pernum AS respondent, hhmember5 as passengerid FROM trip WHERE hhmember5 IS NOT NULL AND hhmember5 <> personid
+        UNION ALL SELECT tripid, pernum AS respondent, hhmember6 as passengerid FROM trip WHERE hhmember6 IS NOT NULL AND hhmember6 <> personid
+        UNION ALL SELECT tripid, pernum AS respondent, hhmember7 as passengerid FROM trip WHERE hhmember7 IS NOT NULL AND hhmember7 <> personid
+        UNION ALL SELECT tripid, pernum AS respondent, hhmember8 as passengerid FROM trip WHERE hhmember8 IS NOT NULL AND hhmember8 <> personid
+        UNION ALL SELECT tripid, pernum AS respondent, hhmember9 as passengerid FROM trip WHERE hhmember9 IS NOT NULL AND hhmember9 <> personid)
+	SELECT tripid, respondent, passengerid INTO silent_passenger_trip FROM cte GROUP BY tripid, respondent, passengerid;
+
+	DROP PROCEDURE IF EXISTS silent_passenger_trips_inserted;
+	GO
+	CREATE PROCEDURE silent_passenger_trips_inserted 
+	AS BEGIN
+	DECLARE @respondent int 
+	SET @respondent = 1;
     INSERT INTO trip
 		(hhid, personid, pernum,
 		depart_time_timestamp, arrival_time_timestamp,
@@ -1139,7 +1104,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		toll, toll_pay, taxi_type, taxi_pay, bus_type, bus_pay, bus_cost_dk, ferry_type, ferry_pay, ferry_cost_dk, rail_type, rail_pay, rail_cost_dk, air_type, air_pay, airfare_cost_dk,
 		origin_geom, origin_lat, origin_lng, dest_geom, dest_county, dest_city, dest_zip, dest_is_home, dest_is_work, psrc_inserted, revision_code)
 	SELECT -- select fields necessary for new trip records	
-		t.hhid, t.passengerid AS personid, CAST(RIGHT(t.personid,2) AS int) AS pernum, 
+		t.hhid, spt.passengerid AS personid, CAST(RIGHT(spt.passengerid,2) AS int) AS pernum, 
 		t.depart_time_timestamp, t.arrival_time_timestamp,
 		t.dest_name, t.dest_address, t.dest_lat, t.dest_lng,
 		t.trip_path_distance, t.google_duration, t.reported_duration,
@@ -1148,15 +1113,31 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		t.park_ride_area_start, t.park_ride_area_end, t.park_ride_lot_start, t.park_ride_lot_end, t.park, t.park_type, t.park_pay,
 		t.toll, t.toll_pay, t.taxi_type, t.taxi_pay, t.bus_type, t.bus_pay, t.bus_cost_dk, t.ferry_type, t.ferry_pay, t.ferry_cost_dk, t.rail_type, t.rail_pay, t.rail_cost_dk, t.air_type, t.air_pay, t.airfare_cost_dk,
 		t.origin_geom, t.origin_lat, t.origin_lng, t.dest_geom, t.dest_county, t.dest_city, t.dest_zip, t.dest_is_home, t.dest_is_work, 1 AS psrc_inserted, CONCAT(t.revision_code, '6,') AS revision_code
-	FROM list_passenger_trips as t -- insert only when the time midpoint of the CTE trip doesn't intersect any trip by the same person; doesn't matter if an intersecting trip reports the other hhmembers or not.
-        LEFT JOIN trip as compare_t ON t.passengerid = compare_t.personid AND 
+	FROM silent_passenger_trip AS spt -- insert only when the time midpoint of the CTE trip doesn't intersect any trip by the same person; doesn't matter if an intersecting trip reports the other hhmembers or not.
+        JOIN trip as t ON spt.tripid = t.tripid
+		LEFT JOIN trip as compare_t ON spt.passengerid = compare_t.personid AND 
 			DATEADD(Second, (DATEDIFF(Second, compare_t.depart_time_timestamp, compare_t.arrival_time_timestamp)/2), compare_t.depart_time_timestamp) 
             BETWEEN t.depart_time_timestamp AND t.arrival_time_timestamp
-        WHERE compare_t.personid IS NULL;
+		WHERE compare_t.personid IS NULL AND spt.respondent = @respondent;
+	SET @respondent = @respondent + 1	
+	END
+	GO
 
-		GO
-		EXEC tripnum_update; --after adding records, we need to renumber them consecutively
-		GO
+	--batching by respondent prevents duplication in the case silent passengers were reported by multiple household members on the same trip 
+	EXECUTE silent_passenger_trips_inserted;
+	EXECUTE silent_passenger_trips_inserted;
+	EXECUTE silent_passenger_trips_inserted;
+	EXECUTE silent_passenger_trips_inserted;
+	EXECUTE silent_passenger_trips_inserted;
+	EXECUTE silent_passenger_trips_inserted;
+	EXECUTE silent_passenger_trips_inserted;
+	EXECUTE silent_passenger_trips_inserted;
+	EXECUTE silent_passenger_trips_inserted;
+	DROP PROCEDURE silent_passenger_trips_inserted;
+	/* DROP TABLE silent_passenger_trip*/
+
+	EXECUTE tripnum_update; --after adding records, we need to renumber them consecutively
+	EXECUTE dest_purpose_updates;  --running these again to apply to linked trips, JIC
 
 /* STEP 6. Flag inconsistencies */
 
