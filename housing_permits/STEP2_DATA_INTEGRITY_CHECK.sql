@@ -38,8 +38,12 @@ ALTER TABLE Angela.STEP2_17_16
         ADD CONSTRAINT PK_STEP2_17_16
         PRIMARY KEY(AY_ID)
 
--- 2. TYPE 1, THE PREVIOUS YEARS' PERMIT RECORDS GOT FINALIZED IN LATEST YEAR 
+-- 2. TYPE 1, 
+-- THE PREVIOUS YEARS' PERMIT RECORDS GOT FINALIZED IN LATEST YEAR 
 -- no change in units
+-- same issued date
+-- same jurisdiction
+-- same location: street number and name are same; 
 UPDATE Angela.STEP2_17_16
 SET CHECK_ = 'TYPE1_OLD'
 WHERE AY_ID IN 
@@ -64,18 +68,71 @@ WHERE a.FINALED is null
         AND b.PROJYEAR = 2017
 )
 
-
-SELECT COUNT(AY_ID), CHECK_
-FROM Angela.STEP2_17_16
-GROUP BY CHECK_
-
-SELECT a.STRNAME, a.STRTYPE, b.STRNAME, b.STRTYPE, a.ZIP, b.ZIP
+-- To process difference in street names but they actually mean the same street: 
+SELECT a.AY_ID, b.AY_ID, a.STRNAME, b.STRNAME 
 FROM Angela.STEP2_17_16 a 
 INNER JOIN Angela.STEP2_17_16 b ON a.JURIS = b.JURIS17 AND a.ISSUED = b.ISSUED AND a.UNITS = b.UNITS AND a.HOUSENO = b.HOUSENO AND a.STRNAME != b.STRNAME
 WHERE a.FINALED is null 
         AND b.FINALED is not null 
         AND a.PROJYEAR != 2017
-        AND b.PROJYEAR = 2017 
+        AND b.PROJYEAR = 2017
+
+-- lower case + get rid of the space between letters, see if one column value is a substring of the other one, and it should beging with index position 0 or 1? 
+
+WITH t AS
+(SELECT a.AY_ID AS AY_ID_a, b.AY_ID AS AY_ID_b, a.STRNAME AS STRNAME_a, b.STRNAME AS STRNAME_b
+FROM Angela.STEP2_17_16 a 
+INNER JOIN Angela.STEP2_17_16 b ON a.JURIS = b.JURIS17 AND a.ISSUED = b.ISSUED AND a.UNITS = b.UNITS AND a.HOUSENO = b.HOUSENO AND a.STRNAME != b.STRNAME
+WHERE a.FINALED is null 
+        AND b.FINALED is not null 
+        AND a.PROJYEAR != 2017
+        AND b.PROJYEAR = 2017) 
+UPDATE Angela.STEP2_17_16
+SET CHECK_ = 'TYPE1_NEW'
+WHERE AY_ID IN(
+	SELECT AY_ID_b from t 
+	WHERE LOWER(STRNAME_a) LIKE CONCAT('%', LOWER(STRNAME_b), '%') OR LOWER(STRNAME_b) LIKE CONCAT('%', LOWER(STRNAME_a), '%'))
+
+
+WITH t AS -- everytime you have to redefine the t for the new clause
+(SELECT a.AY_ID AS AY_ID_a, b.AY_ID AS AY_ID_b, a.STRNAME AS STRNAME_a, b.STRNAME AS STRNAME_b
+FROM Angela.STEP2_17_16 a 
+INNER JOIN Angela.STEP2_17_16 b ON a.JURIS = b.JURIS17 AND a.ISSUED = b.ISSUED AND a.UNITS = b.UNITS AND a.HOUSENO = b.HOUSENO AND a.STRNAME != b.STRNAME
+WHERE a.FINALED is null 
+        AND b.FINALED is not null 
+        AND a.PROJYEAR != 2017
+        AND b.PROJYEAR = 2017) 
+UPDATE Angela.STEP2_17_16
+SET CHECK_ = 'TYPE1_OLD'
+WHERE AY_ID IN(
+	SELECT AY_ID_a from t 
+	WHERE LOWER(STRNAME_a) LIKE CONCAT('%', LOWER(STRNAME_b), '%') OR LOWER(STRNAME_b) LIKE CONCAT('%', LOWER(STRNAME_a), '%'))
+
+-- fix the addresses if needed 
+
+-- add a new column into the data and called it: STRNAME_NEW
+-- update this new column to the selected value from street names, this process should be in the next step (fix bugs in data)
+
+ALTER TABLE Angela.STEP2_17_16
+ADD STRENAME_NEW nvarchar(255)
+
+WITH t AS -- everytime you have to redefine the t for the new clause
+(SELECT a.AY_ID AS AY_ID_a, b.AY_ID AS AY_ID_b, a.STRNAME AS STRNAME_a, b.STRNAME AS STRNAME_b
+FROM Angela.STEP2_17_16 a 
+INNER JOIN Angela.STEP2_17_16 b ON a.JURIS = b.JURIS17 AND a.ISSUED = b.ISSUED AND a.UNITS = b.UNITS AND a.HOUSENO = b.HOUSENO AND a.STRNAME != b.STRNAME
+WHERE a.FINALED is null 
+        AND b.FINALED is not null 
+        AND a.PROJYEAR != 2017
+        AND b.PROJYEAR = 2017) 
+SELECT *,
+CASE WHEN LEN(STRNAME_a) > LEN(STRNAME_b) THEN STRNAME_a
+     WHEN LEN(STRNAME_a) < LEN(STRNAME_b) THEN STRNAME_b
+	 ELSE STRNAME_b
+END AS test
+FROM t
+
+
+
 
 
 
