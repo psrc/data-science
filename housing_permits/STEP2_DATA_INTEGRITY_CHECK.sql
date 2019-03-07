@@ -44,6 +44,8 @@ ALTER TABLE Angela.STEP2_17_16
 -- same issued date
 -- same jurisdiction
 -- same location: street number and name are same; 
+
+-- mark old record which has exactly same information as new ones
 UPDATE Angela.STEP2_17_16
 SET CHECK_ = 'TYPE1_OLD'
 WHERE AY_ID IN 
@@ -55,7 +57,7 @@ WHERE a.FINALED is null
         AND a.PROJYEAR != 2017
         AND b.PROJYEAR = 2017
 )
-
+-- mark new record which has exactly same information as old ones
 UPDATE Angela.STEP2_17_16
 SET CHECK_ = 'TYPE1_NEW'
 WHERE AY_ID IN 
@@ -68,8 +70,11 @@ WHERE a.FINALED is null
         AND b.PROJYEAR = 2017
 )
 
--- To process difference in street names but they actually mean the same street: 
-SELECT a.AY_ID, b.AY_ID, a.STRNAME, b.STRNAME 
+
+-- 3. TYPE 2
+-- THE PREVIOUS YEARS' PERMIT RECORDS GOT FINALIZED IN LATEST YEAR 
+-- everything is similar to type 1, but street name are different. Most likely, difference in street names is because of typo. Detect the same street, and update the street name info. 
+SELECT a.AY_ID, b.AY_ID, a.STRNAME, b.STRNAME, a.TYPE, b.TYPE 
 FROM Angela.STEP2_17_16 a 
 INNER JOIN Angela.STEP2_17_16 b ON a.JURIS = b.JURIS17 AND a.ISSUED = b.ISSUED AND a.UNITS = b.UNITS AND a.HOUSENO = b.HOUSENO AND a.STRNAME != b.STRNAME
 WHERE a.FINALED is null 
@@ -79,6 +84,7 @@ WHERE a.FINALED is null
 
 -- lower case + get rid of the space between letters, see if one column value is a substring of the other one, and it should beging with index position 0 or 1? 
 
+-- mark new record with better address infor
 WITH t AS
 (SELECT a.AY_ID AS AY_ID_a, b.AY_ID AS AY_ID_b, a.STRNAME AS STRNAME_a, b.STRNAME AS STRNAME_b
 FROM Angela.STEP2_17_16 a 
@@ -88,12 +94,28 @@ WHERE a.FINALED is null
         AND a.PROJYEAR != 2017
         AND b.PROJYEAR = 2017) 
 UPDATE Angela.STEP2_17_16
-SET CHECK_ = 'TYPE1_NEW'
+SET CHECK_ = 'TYPE2_NEW_ADDRESS_POSITIVE'
 WHERE AY_ID IN(
-	SELECT AY_ID_b from t 
-	WHERE LOWER(STRNAME_a) LIKE CONCAT('%', LOWER(STRNAME_b), '%') OR LOWER(STRNAME_b) LIKE CONCAT('%', LOWER(STRNAME_a), '%'))
+	SELECT DISTINCT AY_ID_b from t 
+	WHERE LOWER(STRNAME_a) LIKE CONCAT('%', LOWER(STRNAME_b), '%')) 
+	
+-- mark new record with no better address info
+WITH t AS
+(SELECT a.AY_ID AS AY_ID_a, b.AY_ID AS AY_ID_b, a.STRNAME AS STRNAME_a, b.STRNAME AS STRNAME_b
+FROM Angela.STEP2_17_16 a 
+INNER JOIN Angela.STEP2_17_16 b ON a.JURIS = b.JURIS17 AND a.ISSUED = b.ISSUED AND a.UNITS = b.UNITS AND a.HOUSENO = b.HOUSENO AND a.STRNAME != b.STRNAME
+WHERE a.FINALED is null 
+        AND b.FINALED is not null 
+        AND a.PROJYEAR != 2017
+        AND b.PROJYEAR = 2017) 
+UPDATE Angela.STEP2_17_16
+SET CHECK_ = 'TYPE2_NEW_ADDRESS_NEGATIVE'
+WHERE AY_ID IN(
+	SELECT DISTINCT AY_ID_b from t 
+	WHERE LOWER(STRNAME_b) LIKE CONCAT('%', LOWER(STRNAME_a), '%'))
+	
 
-
+-- mark old record with better address data
 WITH t AS -- everytime you have to redefine the t for the new clause
 (SELECT a.AY_ID AS AY_ID_a, b.AY_ID AS AY_ID_b, a.STRNAME AS STRNAME_a, b.STRNAME AS STRNAME_b
 FROM Angela.STEP2_17_16 a 
@@ -103,19 +125,12 @@ WHERE a.FINALED is null
         AND a.PROJYEAR != 2017
         AND b.PROJYEAR = 2017) 
 UPDATE Angela.STEP2_17_16
-SET CHECK_ = 'TYPE1_OLD'
+SET CHECK_ = 'TYPE2_OLD_POSITIVE'
 WHERE AY_ID IN(
-	SELECT AY_ID_a from t 
-	WHERE LOWER(STRNAME_a) LIKE CONCAT('%', LOWER(STRNAME_b), '%') OR LOWER(STRNAME_b) LIKE CONCAT('%', LOWER(STRNAME_a), '%'))
+	SELECT DISTINCT AY_ID_a from t 
+	WHERE LOWER(STRNAME_b) LIKE CONCAT('%', LOWER(STRNAME_a), '%'))
 
--- fix the addresses if needed 
-
--- add a new column into the data and called it: STRNAME_NEW
--- update this new column to the selected value from street names, this process should be in the next step (fix bugs in data)
-
-ALTER TABLE Angela.STEP2_17_16
-ADD STRENAME_NEW nvarchar(255)
-
+-- mark old record no better address
 WITH t AS -- everytime you have to redefine the t for the new clause
 (SELECT a.AY_ID AS AY_ID_a, b.AY_ID AS AY_ID_b, a.STRNAME AS STRNAME_a, b.STRNAME AS STRNAME_b
 FROM Angela.STEP2_17_16 a 
@@ -124,15 +139,21 @@ WHERE a.FINALED is null
         AND b.FINALED is not null 
         AND a.PROJYEAR != 2017
         AND b.PROJYEAR = 2017) 
-SELECT *,
-CASE WHEN LEN(STRNAME_a) > LEN(STRNAME_b) THEN STRNAME_a
-     WHEN LEN(STRNAME_a) < LEN(STRNAME_b) THEN STRNAME_b
-	 ELSE STRNAME_b
-END AS test
-FROM t
+UPDATE Angela.STEP2_17_16
+SET CHECK_ = 'TYPE2_OLD_NEGATIVE'
+WHERE AY_ID IN(
+	SELECT DISTINCT AY_ID_a from t 
+	WHERE LOWER(STRNAME_a) LIKE CONCAT('%', LOWER(STRNAME_b), '%'))
 
 
-
+-- TYPE 4: 
+SELECT a.NOTES, b.NOTES
+FROM Angela.STEP2_17_16 a 
+INNER JOIN Angela.STEP2_17_16 b ON a.PERMITNO != b.PERMITNO AND a.TYPE = b.TYPE AND a.JURIS = b.JURIS17  AND a.UNITS = b.UNITS 
+WHERE a.FINALED is null 
+        AND b.FINALED is not null 
+        AND a.PROJYEAR != 2017
+        AND b.PROJYEAR = 2017
 
 
 
