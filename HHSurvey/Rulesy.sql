@@ -1203,7 +1203,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 				FROM trip
     			WHERE EXISTS(SELECT count(*) 
 								FROM (VALUES(trip.transit_line_1),(trip.transit_line_2),(trip.transit_line_3),(trip.transit_line_4),(trip.transit_line_5)) AS transitline(member) 
-								WHERE member IS NOT NULL GROUP BY member HAVING count(*) > 1)
+								WHERE member IS NOT NULL AND member <> 0 GROUP BY member HAVING count(*) > 1)
 
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum,					'non-home trip purpose, destination home' AS error_flag
 				FROM trip
