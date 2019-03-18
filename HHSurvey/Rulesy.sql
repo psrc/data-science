@@ -557,12 +557,12 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 			,[arrival_time_mam]
 			,[arrival_time_hhmm]
 			,convert(datetime2, arrival_time_timestamp, 121)
-			,[origin_name]
-			,[origin_address]
+			,dbo.TRIM([origin_name])
+			,dbo.TRIM([origin_address])
 			,[origin_lat]
 			,[origin_lng]
-			,[dest_name]
-			,[dest_address]
+			,dbo.TRIM([dest_name])
+			,dbo.TRIM([dest_address])
 			,[dest_lat]
 			,[dest_lng]
 			,[trip_path_distance]
@@ -584,7 +584,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 			,[origin_purpose]
 			,[o_purpose_other]
 			,[dest_purpose]
-			,[dest_purpose_comment]
+			,dbo.TRIM([dest_purpose_comment])
 			,cast([mode_1] as smallint)
 			,cast([mode_2] as smallint)
 			,cast([mode_3] as smallint)
@@ -684,7 +684,9 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		CREATE SPATIAL INDEX dest_geom_idx ON trip(dest_geom)
 			USING GEOMETRY_AUTO_GRID
 			WITH (BOUNDING_BOX= (xmin=-157.858, ymin=-20, xmax=124.343, ymax=57.803));
-	
+
+	-- Convert rMoves trip distances to miles; rSurvey records are already reported in miles
+		UPDATE trip SET trip.trip_path_distance = trip.trip_path_distance / 1609.344 WHERE trip.hhgroup = 1
 
 	-- Tripnum must be sequential or later steps will fail. Create procedure and employ where required.
 		DROP PROCEDURE IF EXISTS tripnum_update;
@@ -732,28 +734,37 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		CREATE PROCEDURE dest_purpose_updates AS 
 		BEGIN
 			
-			UPDATE trip --Classify home destinations
-				SET dest_is_home = 1
+			UPDATE trip --Classify home destinations; criteria plus 100m proximity to household home location
+				SET trip.dest_is_home = 1
 				FROM trip JOIN household ON trip.hhid = household.hhid
-				WHERE (dest_name = 'HOME' 
+				WHERE (trip.dest_name = 'HOME' 
 					OR(
-						(dbo.RgxFind([dest_name],' home',1) = 1 
-						OR dbo.RgxFind([dest_name],'^h[om]?$',1) = 1) 
-						and dbo.RgxFind([dest_name],'(their|her|s|from|near|nursing|friend) home',1) = 0
+						(dbo.RgxFind(trip.dest_name,' home',1) = 1 
+						OR dbo.RgxFind(trip.dest_name,'^h[om]?$',1) = 1) 
+						and dbo.RgxFind(trip.dest_name,'(their|her|s|from|near|nursing|friend) home',1) = 0
 					)
-					OR(dest_purpose = 1 AND dest_name IS NULL))
-					AND trip.dest_geom.STIntersects(household.home_geom.STBuffer(0.0009))=1;
+					OR(trip.dest_purpose = 1 AND trip.dest_name IS NULL))
+					AND trip.dest_geom.STIntersects(household.home_geom.STBuffer(0.001)) = 1;
+
+			UPDATE trip --Classify home destinations where destination code is absent; 30m proximity to home location on file
+				SET trip.dest_is_home = 1, trip.dest_purpose = 1
+				FROM trip JOIN household ON trip.hhid = household.hhid
+				WHERE trip.dest_purpose = -9998 AND trip.dest_geom.STIntersects(household.home_geom.STBuffer(0.0003)) = 1
 
 			UPDATE trip --Classify primary work destinations
-				SET dest_is_work = 1
-				FROM trip JOIN person ON trip.personid  =person.personid
+				SET trip.dest_is_work = 1
+				FROM trip JOIN person ON trip.personid = person.personid
 				WHERE (dest_name = 'WORK' 
-					OR((dbo.RgxFind([dest_name],' work',1) = 1 
-						OR dbo.RgxFind([dest_name],'^w[or ]?$',1) = 1))
-					OR(dest_purpose = 10 AND dest_name IS NULL))
-					AND trip.dest_geom.STIntersects(person.work_geom.STBuffer(0.0009))=1;
-		
-			
+					OR((dbo.RgxFind(trip.dest_name,' work',1) = 1 
+						OR dbo.RgxFind(trip.dest_name,'^w[or ]?$',1) = 1))
+					OR(dest_purpose = 10 AND trip.dest_name IS NULL))
+					AND trip.dest_geom.STIntersects(person.work_geom.STBuffer(0.001))=1;
+
+			UPDATE trip --Classify work destinations where destination code is absent; 30m proximity to work location on file
+				SET trip.dest_is_work = 1, trip.dest_purpose = 10
+				FROM trip JOIN person ON trip.personid  =person.personid
+				WHERE trip.dest_purpose = -9998 AND trip.dest_geom.STIntersects(person.work_geom.STBuffer(0.0003))=1;		
+					
 			UPDATE trip --revises purpose field for return portion of a single stop loop trip 
 				SET trip.dest_purpose = (CASE WHEN trip.dest_is_home = 1 THEN 1 WHEN trip.dest_is_work = 1 THEN 10 ELSE trip.dest_purpose END), trip.revision_code = CONCAT(trip.revision_code,'1,')
 				FROM trip 
@@ -761,44 +772,50 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 				WHERE (trip.dest_purpose <> 1 and trip.dest_is_home = 1) OR (trip.dest_purpose <> 10 and trip.dest_is_work = 1)
 					AND trip.dest_purpose=prev_trip.dest_purpose;
 
-			UPDATE trip --Change code to pickup/dropoff when passenger number changes, duration is under 30 minutes, and pickup/dropoff mentioned in dest_name
+			UPDATE trip --Change code to pickup/dropoff when passenger number changes, and either duration is under 30 minutes or pickup/dropoff mentioned in dest_name
 				SET trip.dest_purpose = 9, trip.revision_code = CONCAT(trip.revision_code,'2,')
 				FROM trip 
 					JOIN person ON trip.personid=person.personid 
 					JOIN trip as next_trip ON trip.personid=next_trip.personid	AND trip.tripnum + 1 = next_trip.tripnum						
-				WHERE dbo.RgxFind([trip].[dest_name],'(drop|pick)',1) = 1
-					AND trip.dest_purpose <> 9
-					AND trip.travelers_total <> next_trip.travelers_total
+				WHERE trip.travelers_total <> next_trip.travelers_total
+					AND person.age > 5
+					AND trip.dest_purpose IN(-9998,6,97)
 					AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 30;
-
-			UPDATE trip --changes purpose code from school to pickup/dropoff when passenger number changes and duration is under 30 minutes
-				SET trip.dest_purpose = 9, trip.revision_code = CONCAT(trip.revision_code,'2,')
-				FROM trip 
-					JOIN person ON trip.personid=person.personid 
-					JOIN trip as next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
-				WHERE trip.dest_purpose = 6
-					AND trip.travelers_total <> next_trip.travelers_total
-					AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 40;
 			
 			UPDATE trip --changes code to 'family activity' when passenger number changes and duration is from 30mins to 4hrs
 				SET trip.dest_purpose = 56, trip.revision_code = CONCAT(trip.revision_code,'3,')
 				FROM trip 
 					JOIN person ON trip.personid=person.personid 
 					JOIN trip as next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
-				WHERE trip.dest_purpose = 6
-					AND trip.travelers_total <> next_trip.travelers_total
-					AND dbo.RgxFind(trip.dest_name,'(school|care)',1) = 1
-					AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) Between 30 and 240;
+				WHERE trip.travelers_total <> next_trip.travelers_total
+					AND person.age > 5
+					AND (trip.dest_purpose = 6 OR dbo.RgxFind(trip.dest_name,'(school|care)',1) = 1)
+					AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) Between 31 and 240;
+
+			UPDATE trip --updates empty purpose code to 'school' when destination is school and duration > 30 minutes.
+				SET trip.dest_purpose = 6, trip.revision_code = CONCAT(trip.revision_code,'2,')
+				FROM trip 
+					JOIN trip as next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
+				WHERE trip.dest_purpose = 97 AND trip.dest_name = 'school'
+					AND trip.travelers_total = 1
+					AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) > 30;		
 
 		--Change 'Other' trip purpose when purpose is given in destination
-			UPDATE trip 	SET dest_purpose = 1,  revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dest_is_home = 1;
-			UPDATE trip 	SET dest_purpose = 10, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dest_is_work = 1;
-			UPDATE trip		SET dest_purpose = 33, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(bank|gas|post ?office)',1) = 1;		
-			UPDATE trip		SET dest_purpose = 34, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(doctor|dentist|hospital)',1) = 1;	
+			UPDATE trip 	SET dest_purpose = 1,  revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose IN(-9998,97) AND dest_is_home = 1;
+			UPDATE trip 	SET dest_purpose = 10, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose IN(-9998,97) AND dest_is_work = 1;
+			UPDATE trip 	SET dest_purpose = 11, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dest_is_work <> 1 AND trip.dest_name = 'WORK';
+			UPDATE trip		SET dest_purpose = 30, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(grocery|costco|safeway|trader ?joe)',1) = 1;				
+			UPDATE trip		SET dest_purpose = 32, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(store)',1) = 1;	
+			UPDATE trip		SET dest_purpose = 33, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(bank|gas|post ?office|library|barber|hair)',1) = 1;				UPDATE trip		SET dest_purpose = 33, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(bank|gas|post ?office|library)',1) = 1;		
+			UPDATE trip		SET dest_purpose = 34, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(doctor|dentist|hospital|medical|health)',1) = 1;	
 			UPDATE trip		SET dest_purpose = 50, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(coffee|cafe|starbucks|lunch)',1) = 1;		
 			UPDATE trip		SET dest_purpose = 51, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'dog',1) = 1 AND dbo.RgxFind(dest_name,'(walk|park)',1) = 1;
+			UPDATE trip		SET dest_purpose = 51, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'\bwalk$',1) = 1;	
+			UPDATE trip		SET dest_purpose = 51, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'\bgym$',1) = 1;						
 			UPDATE trip		SET dest_purpose = 51, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'park',1) = 1 AND dbo.RgxFind(dest_name,'(parking|ride)',1) = 0;
-			UPDATE trip		SET dest_purpose = 54, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'church',1) = 1; 
+			UPDATE trip		SET dest_purpose = 53, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'casino',1) = 1;
+			UPDATE trip		SET dest_purpose = 54, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(church|volunteer)',1) = 1;
+			UPDATE trip		SET dest_purpose = 60, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'\bbus\b|transit|\bferry\b|airport|\bstation\b',1) = 1;  
 		END
 		GO
 		EXECUTE dest_purpose_updates;
