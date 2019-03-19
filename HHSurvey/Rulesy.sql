@@ -737,7 +737,8 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 			UPDATE trip --Classify home destinations; criteria plus 100m proximity to household home location
 				SET trip.dest_is_home = 1
 				FROM trip JOIN household ON trip.hhid = household.hhid
-				WHERE (trip.dest_name = 'HOME' 
+				WHERE trip.dest_is_home IS NULL AND
+					(trip.dest_name = 'HOME' 
 					OR(
 						(dbo.RgxFind(trip.dest_name,' home',1) = 1 
 						OR dbo.RgxFind(trip.dest_name,'^h[om]?$',1) = 1) 
@@ -754,7 +755,8 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 			UPDATE trip --Classify primary work destinations
 				SET trip.dest_is_work = 1
 				FROM trip JOIN person ON trip.personid = person.personid
-				WHERE (dest_name = 'WORK' 
+				WHERE trip.dest_is_work IS NULL AND
+					(dest_name = 'WORK' 
 					OR((dbo.RgxFind(trip.dest_name,' work',1) = 1 
 						OR dbo.RgxFind(trip.dest_name,'^w[or ]?$',1) = 1))
 					OR(dest_purpose = 10 AND trip.dest_name IS NULL))
@@ -820,7 +822,29 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		GO
 		EXECUTE dest_purpose_updates;
 
+	/* for rMoves records that don't report mode or purpose */
+
+		--if traveling with another hhmember, take this from the most adult member with whom they traveled
+		WITH cte AS
+			(SELECT myself.tripid AS self_tripid, family.personid AS referent, family.tripid AS referent_tripid
+			 FROM trip AS myself JOIN trip AS family ON myself.hhid=family.hhid AND myself.pernum <> family.pernum 
+			 WHERE EXISTS (SELECT 1 FROM (VALUES (family.hhmember1),(family.hhmember2),(family.hhmember3),(family.hhmember4),(family.hhmember5),(family.hhmember6),(family.hhmember7),(family.hhmember8),(family.hhmember9)) AS hhmem(member) WHERE myself.personid IN(member))
+			    AND (myself.depart_time_timestamp BETWEEN DATEADD(Minute, -5, family.depart_time_timestamp) AND DATEADD(Minute, 5, family.arrival_time_timestamp))
+			    AND (myself.arrival_time_timestamp BETWEEN DATEADD(Minute, -5, family.depart_time_timestamp) AND DATEADD(Minute, 5, family.arrival_time_timestamp))
+				AND myself.dest_purpose = -9998 AND myself.mode_1 = -9998 AND family.dest_purpose <> -9998 AND family.mode_1 <> -9998)
+		UPDATE t
+			SET t.dest_purpose = ref_t.dest_purpose, 
+				t.mode_1 	   = ref_t.mode_1		
+			FROM trip AS t JOIN cte ON t.tripid = cte.self_tripid JOIN trip AS ref_t ON cte.referent_tripid = ref_t.tripid AND cte.referent = ref_t.personid
+			WHERE t.dest_purpose = -9998 AND t.mode_1 = -9998;
+
+		--update modes on the extremes of speed and distance
+		UPDATE t SET t.mode_1 = 31	FROM trip AS t WHERE t.mode_1 = -9998 AND t.trip_path_distance > 200 AND t.speed_mph > 200;
+		UPDATE t SET t.mode_1 = 1 	FROM trip AS t WHERE t.mode_1 = -9998 AND t.trip_path_distance < 0.6 AND t.speed_mph < 5;	
+		
 /* STEP 4.	Trip linking */
+
+	-- Populate consolidated modes, transit_sytems, and transit_lines fields, used later
 
 		/*	These are MSSQL17 commands for the UPDATE query below--faster and clearer, once we upgrade.
 		UPDATE trip
@@ -846,14 +870,10 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 									COALESCE(',' + CAST(transit_line_4 AS nvarchar), '') + 
 									COALESCE(',' + CAST(transit_line_5 AS nvarchar), ''), 1, 1, '')							
 
-		DROP TABLE IF EXISTS trip_ingredient;
-		SELECT TOP 1 *, CAST(-1 AS int) AS trip_link INTO trip_ingredient FROM trip;
-		TRUNCATE TABLE trip_ingredient;
-		GO
-
 		-- remove component records into separate table, starting w/ 2nd component (i.e., first is left in trip table).  The criteria here determine which get considered components.
-		DELETE next_trip  
-		OUTPUT DELETED.*, CAST(0 AS int) AS trip_link INTO trip_ingredient
+		DROP TABLE IF EXISTS trip_ingredient;
+		GO
+		SELECT next_trip.*, CAST(0 AS int) AS trip_link INTO trip_ingredient
 		FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
 			WHERE 	trip.dest_is_home IS NULL AND trip.dest_is_work IS NULL AND 
 				((trip.dest_purpose = 60 AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 30)
@@ -899,14 +919,11 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 			FROM trip_ingredient AS ti JOIN cte ON cte.personid = ti.personid AND cte.trip_link = ti.trip_link;
 		GO
 
-		-- return the un-linked components back to the trip table
-		DROP TABLE IF EXISTS trip_ingredient_reject;
-		SELECT * INTO trip_ingredient_reject FROM  trip_ingredient
-			WHERE ti.trip_link = -1 AND ti.tripnum <> ti.trip_link;
-
-		ALTER TABLE trip_ingredient_reject DROP COLUMN trip_link;
-		INSERT INTO trip SELECT * FROM trip_ingredient_reject; -- This is quick & dirty; to avoid field mapping problems, this should probably specify each field
-
+		-- delete the components that will get replaced with linked trips
+		DELETE t
+		FROM trip AS t JOIN trip_ingredient AS ti ON t.tripid=ti.tripid
+		WHERE ti.trip_link <> -1 AND t.tripnum <> ti.trip_link;	
+		GO
 
 		-- meld the trip_ingredients to create the fields that will populate the linked trip, and saves those as a separate table, 'linked_trip'.
 		DROP TABLE IF EXISTS linked_trip;
@@ -1011,7 +1028,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 																		t.rail_type		= lt.rail_type, 
 																		t.air_type		= lt.air_type,	
 				t.revision_code 		= CONCAT(t.revision_code, '5,')
-			FROM trip AS t JOIN linked_trip AS lt ON t.personid = lt.personid AND t.tripnum = lt.trip_link 
+			FROM trip AS t JOIN linked_trip AS lt ON t.personid = lt.personid AND t.tripnum = lt.trip_link;
 
 /* STEP 5.	Mode number standardization, including access and egress characterization */
 
