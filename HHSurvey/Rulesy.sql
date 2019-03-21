@@ -747,10 +747,11 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 					OR(trip.dest_purpose = 1 AND trip.dest_name IS NULL))
 					AND trip.dest_geom.STIntersects(household.home_geom.STBuffer(0.001)) = 1;
 
-			UPDATE trip --Classify home destinations where destination code is absent; 30m proximity to home location on file
-				SET trip.dest_is_home = 1, trip.dest_purpose = 1
-				FROM trip JOIN household ON trip.hhid = household.hhid
-				WHERE trip.dest_purpose = -9998 AND trip.dest_geom.STIntersects(household.home_geom.STBuffer(0.0003)) = 1
+			UPDATE t --Classify home destinations where destination code is absent; 30m proximity to home location on file
+				SET t.dest_is_home = 1, t.dest_purpose = 1
+				FROM trip AS t JOIN household ON t.hhid = household.hhid
+						  LEFT JOIN trip AS prior_t ON trip.personid = prior_t.personid AND t.tripnum - 1 = prior_t.tripnum
+				WHERE (t.dest_purpose = -9998 OR t.dest_purpose = prior_t.dest_purpose) AND t.dest_geom.STIntersects(household.home_geom.STBuffer(0.0003)) = 1
 
 			UPDATE trip --Classify primary work destinations
 				SET trip.dest_is_work = 1
@@ -762,10 +763,11 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 					OR(dest_purpose = 10 AND trip.dest_name IS NULL))
 					AND trip.dest_geom.STIntersects(person.work_geom.STBuffer(0.001))=1;
 
-			UPDATE trip --Classify work destinations where destination code is absent; 30m proximity to work location on file
-				SET trip.dest_is_work = 1, trip.dest_purpose = 10
-				FROM trip JOIN person ON trip.personid  =person.personid
-				WHERE trip.dest_purpose = -9998 AND trip.dest_geom.STIntersects(person.work_geom.STBuffer(0.0003))=1;		
+			UPDATE t --Classify work destinations where destination code is absent; 30m proximity to work location on file
+				SET t.dest_is_work = 1, t.dest_purpose = 10
+				FROM trip JOIN person ON t.personid  = person.personid
+					 LEFT JOIN trip AS prior_t ON t.personid = prior_t.personid AND t.tripnum - 1 = prior_t.tripnum
+				WHERE (t.dest_purpose = -9998 OR t.dest_purpose = prior_t.dest_purpose) AND t.dest_geom.STIntersects(person.work_geom.STBuffer(0.0003))=1;		
 					
 			UPDATE trip --revises purpose field for return portion of a single stop loop trip 
 				SET trip.dest_purpose = (CASE WHEN trip.dest_is_home = 1 THEN 1 WHEN trip.dest_is_work = 1 THEN 10 ELSE trip.dest_purpose END), trip.revision_code = CONCAT(trip.revision_code,'1,')
@@ -834,13 +836,14 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 				AND myself.dest_purpose = -9998 AND myself.mode_1 = -9998 AND family.dest_purpose <> -9998 AND family.mode_1 <> -9998)
 		UPDATE t
 			SET t.dest_purpose = ref_t.dest_purpose, 
-				t.mode_1 	   = ref_t.mode_1		
+				t.mode_1 	   = ref_t.mode_1
+				t.revision_code = CONCAT(t.revision_code,'5,')		
 			FROM trip AS t JOIN cte ON t.tripid = cte.self_tripid JOIN trip AS ref_t ON cte.referent_tripid = ref_t.tripid AND cte.referent = ref_t.personid
 			WHERE t.dest_purpose = -9998 AND t.mode_1 = -9998;
 
 		--update modes on the extremes of speed and distance
-		UPDATE t SET t.mode_1 = 31	FROM trip AS t WHERE t.mode_1 = -9998 AND t.trip_path_distance > 200 AND t.speed_mph > 200;
-		UPDATE t SET t.mode_1 = 1 	FROM trip AS t WHERE t.mode_1 = -9998 AND t.trip_path_distance < 0.6 AND t.speed_mph < 5;	
+		UPDATE t SET t.mode_1 = 31, t.revision_code = CONCAT(t.revision_code,'6,')	FROM trip AS t WHERE (t.mode_1 = -9998 OR t.mode_1 IS NULL) AND t.trip_path_distance > 200 AND t.speed_mph > 200;
+		UPDATE t SET t.mode_1 = 1,  t.revision_code = CONCAT(t.revision_code,'6,') 	FROM trip AS t WHERE (t.mode_1 = -9998 OR t.mode_1 IS NULL) AND t.trip_path_distance < 0.6 AND t.speed_mph < 5;	
 		
 /* STEP 4.	Trip linking */
 
@@ -901,11 +904,19 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 			SELECT t.*, t.tripnum AS trip_link FROM trip AS t JOIN trip_ingredient AS ti ON t.personid = ti.personid AND t.tripnum = ti.trip_link AND t.tripnum = ti.tripnum - 1;
 
 		-- denote trips with too many components or other attributes suggesting multiple trips, for later examination.  
-		WITH cte AS 
-			(SELECT ti1.personid, ti1.trip_link
+		WITH cte1 AS
+			(SELECT DISTINCT ti_wndw.personid, ti_wndw.trip_link, dbo.TRIM(dbo.RgxReplace(
+				STUFF((SELECT ',' + ti0.transit_lines
+					FROM trip_ingredient AS ti0 
+					WHERE ti0.personid = ti_wndw.personid AND ti0.trip_link = ti_wndw.trip_link
+					ORDER BY ti_wndw.personid DESC, ti_wndw.tripnum DESC
+					FOR XML PATH('')), 1, 1, NULL),'(\b\d+\b),(?=\1)','',1)) AS transit_lines	
+				FROM trip_ingredient as ti_wndw WHERE ti_wndw.transit_lines IS NOT NULL),
+		cte2 AS 
+			(SELECT ti1.personid, ti1.trip_link 			--sets with more than 5 trip components
 				FROM trip_ingredient as ti1 GROUP BY ti1.personid, ti1.trip_link 
 				HAVING count(*) > 5
-			UNION ALL SELECT ti2.personid, ti2.trip_link	
+			UNION ALL SELECT ti2.personid, ti2.trip_link	--sets with two items that each denote a separate trip
 				FROM trip_ingredient as ti2 GROUP BY ti2.personid, ti2.trip_link
 				HAVING sum(CASE WHEN LEN(ti2.pool_start) 			<>0 THEN 1 ELSE 0 END) > 1
 					OR sum(CASE WHEN LEN(ti2.change_vehicles) 		<>0 THEN 1 ELSE 0 END) > 1
@@ -913,7 +924,11 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 					OR sum(CASE WHEN LEN(ti2.park_ride_area_end) 	<>0 THEN 1 ELSE 0 END) > 1
 					OR sum(CASE WHEN LEN(ti2.park_ride_lot_start) 	<>0 THEN 1 ELSE 0 END) > 1
 					OR sum(CASE WHEN LEN(ti2.park_ride_lot_end) 	<>0 THEN 1 ELSE 0 END) > 1
-					OR sum(CASE WHEN LEN(ti2.park_type) 			<>0 THEN 1 ELSE 0 END) > 1)
+					OR sum(CASE WHEN LEN(ti2.park_type) 			<>0 THEN 1 ELSE 0 END) > 1
+			UNION ALL SELECT ti3.personid, ti3.trip_link 	--sets with nonadjacent repeating transit lines
+				FROM trip_ingredient AS ti3 JOIN cte1 ON ti3.personid = cte1.personid AND ti3.trip_link = cte1.trip_link
+				WHERE dbo.RgxFind(cte1.transit_lines,'(\b\d+\b),.+(?=\1)',1)=1)
+		SELECT * FROM cte2;				
 		UPDATE ti
 			SET ti.trip_link = -1 * ti.trip_link
 			FROM trip_ingredient AS ti JOIN cte ON cte.personid = ti.personid AND cte.trip_link = ti.trip_link;
@@ -931,6 +946,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		WITH cte_agg AS
 		(SELECT ti_agg.personid,
 				ti_agg.trip_link,
+				MAX(CASE WHEN ti_agg.dest_purpose = 60 THEN 0 ELSE ti_agg.dest_purpose) AS dest_purpose
 				MAX(ti_agg.arrival_time_timestamp) 	AS arrival_time_timestamp,		MAX(ti_agg.hhmember1) 	AS hhmember1, 
 				SUM(ti_agg.trip_path_distance) 		AS trip_path_distance, 			MAX(ti_agg.hhmember2) 	AS hhmember2, 
 				SUM(ti_agg.google_duration) 		AS google_duration, 			MAX(ti_agg.hhmember3) 	AS hhmember3, 
@@ -962,7 +978,6 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		(SELECT DISTINCT
 				ti_wndw.personid AS personid2,
 				ti_wndw.trip_link AS trip_link2,
-				FIRST_VALUE(ti_wndw.dest_purpose) 	OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_purpose,
 				FIRST_VALUE(ti_wndw.dest_name) 		OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_name,
 				FIRST_VALUE(ti_wndw.dest_address) 	OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_address,
 				FIRST_VALUE(ti_wndw.dest_county) 	OVER (PARTITION BY CONCAT(ti_wndw.personid,ti_wndw.trip_link) ORDER BY ti_wndw.tripnum DESC) AS dest_county,
@@ -1027,7 +1042,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 																		t.ferry_type	= lt.ferry_type, 
 																		t.rail_type		= lt.rail_type, 
 																		t.air_type		= lt.air_type,	
-				t.revision_code 		= CONCAT(t.revision_code, '5,')
+				t.revision_code 		= CONCAT(t.revision_code, '7,')
 			FROM trip AS t JOIN linked_trip AS lt ON t.personid = lt.personid AND t.tripnum = lt.trip_link;
 
 /* STEP 5.	Mode number standardization, including access and egress characterization */
@@ -1269,7 +1284,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 
 			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum, 		  'suspected drop-off or pick-up coded as school trip' AS error_flag
 				FROM trip JOIN trip as next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum JOIN person ON trip.personid=person.personid 					
-				WHERE 	trip.dest_purpose = 6		
+				WHERE trip.dest_purpose = 6		
 					AND ((person.student NOT IN(2,3,4))
 						OR (DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 20)))
 		INSERT INTO trip_error_flags (tripid, personid, tripnum, error_flag)
