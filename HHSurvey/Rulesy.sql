@@ -734,75 +734,75 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		CREATE PROCEDURE dest_purpose_updates AS 
 		BEGIN
 			
-			UPDATE trip --Classify home destinations; criteria plus 100m proximity to household home location
-				SET trip.dest_is_home = 1
-				FROM trip JOIN household ON trip.hhid = household.hhid
-				WHERE trip.dest_is_home IS NULL AND
-					(trip.dest_name = 'HOME' 
+			UPDATE t--Classify home destinations; criteria plus 100m proximity to household home location
+				SET t.dest_is_home = 1
+				FROM trip AS t JOIN household ON t.hhid = household.hhid
+				WHERE t.dest_is_home IS NULL AND
+					(t.dest_name = 'HOME' 
 					OR(
-						(dbo.RgxFind(trip.dest_name,' home',1) = 1 
-						OR dbo.RgxFind(trip.dest_name,'^h[om]?$',1) = 1) 
-						and dbo.RgxFind(trip.dest_name,'(their|her|s|from|near|nursing|friend) home',1) = 0
+						(dbo.RgxFind(t.dest_name,' home',1) = 1 
+						OR dbo.RgxFind(t.dest_name,'^h[om]?$',1) = 1) 
+						and dbo.RgxFind(t.dest_name,'(their|her|s|from|near|nursing|friend) home',1) = 0
 					)
-					OR(trip.dest_purpose = 1 AND trip.dest_name IS NULL))
-					AND trip.dest_geom.STIntersects(household.home_geom.STBuffer(0.001)) = 1;
+					OR(t.dest_purpose = 1 AND t.dest_name IS NULL))
+					AND t.dest_geom.STIntersects(household.home_geom.STBuffer(0.001)) = 1;
 
 			UPDATE t --Classify home destinations where destination code is absent; 30m proximity to home location on file
 				SET t.dest_is_home = 1, t.dest_purpose = 1
 				FROM trip AS t JOIN household ON t.hhid = household.hhid
-						  LEFT JOIN trip AS prior_t ON trip.personid = prior_t.personid AND t.tripnum - 1 = prior_t.tripnum
+						  LEFT JOIN trip AS prior_t ON t.personid = prior_t.personid AND t.tripnum - 1 = prior_t.tripnum
 				WHERE (t.dest_purpose = -9998 OR t.dest_purpose = prior_t.dest_purpose) AND t.dest_geom.STIntersects(household.home_geom.STBuffer(0.0003)) = 1
 
-			UPDATE trip --Classify primary work destinations
-				SET trip.dest_is_work = 1
-				FROM trip JOIN person ON trip.personid = person.personid
-				WHERE trip.dest_is_work IS NULL AND
-					(dest_name = 'WORK' 
-					OR((dbo.RgxFind(trip.dest_name,' work',1) = 1 
-						OR dbo.RgxFind(trip.dest_name,'^w[or ]?$',1) = 1))
-					OR(dest_purpose = 10 AND trip.dest_name IS NULL))
-					AND trip.dest_geom.STIntersects(person.work_geom.STBuffer(0.001))=1;
+			UPDATE t --Classify primary work destinations
+				SET t.dest_is_work = 1
+				FROM trip AS t JOIN person ON t.personid = person.personid
+				WHERE t.dest_is_work IS NULL AND
+					(t.dest_name = 'WORK' 
+					OR((dbo.RgxFind(t.dest_name,' work',1) = 1 
+						OR dbo.RgxFind(t.dest_name,'^w[or ]?$',1) = 1))
+					OR(t.dest_purpose = 10 AND t.dest_name IS NULL))
+					AND t.dest_geom.STIntersects(person.work_geom.STBuffer(0.001))=1;
 
 			UPDATE t --Classify work destinations where destination code is absent; 30m proximity to work location on file
 				SET t.dest_is_work = 1, t.dest_purpose = 10
-				FROM trip JOIN person ON t.personid  = person.personid
+				FROM trip AS t JOIN person ON t.personid  = person.personid
 					 LEFT JOIN trip AS prior_t ON t.personid = prior_t.personid AND t.tripnum - 1 = prior_t.tripnum
 				WHERE (t.dest_purpose = -9998 OR t.dest_purpose = prior_t.dest_purpose) AND t.dest_geom.STIntersects(person.work_geom.STBuffer(0.0003))=1;		
 					
-			UPDATE trip --revises purpose field for return portion of a single stop loop trip 
-				SET trip.dest_purpose = (CASE WHEN trip.dest_is_home = 1 THEN 1 WHEN trip.dest_is_work = 1 THEN 10 ELSE trip.dest_purpose END), trip.revision_code = CONCAT(trip.revision_code,'1,')
-				FROM trip 
-					JOIN trip AS prev_trip on trip.personid=prev_trip.personid AND trip.tripnum - 1 = prev_trip.tripnum
-				WHERE (trip.dest_purpose <> 1 and trip.dest_is_home = 1) OR (trip.dest_purpose <> 10 and trip.dest_is_work = 1)
-					AND trip.dest_purpose=prev_trip.dest_purpose;
+			UPDATE t --revises purpose field for return portion of a single stop loop trip 
+				SET t.dest_purpose = (CASE WHEN t.dest_is_home = 1 THEN 1 WHEN t.dest_is_work = 1 THEN 10 ELSE t.dest_purpose END), t.revision_code = CONCAT(t.revision_code,'1,')
+				FROM trip AS t
+					JOIN trip AS prev_t on t.personid=prev_t.personid AND t.tripnum - 1 = prev_t.tripnum
+				WHERE (t.dest_purpose <> 1 and t.dest_is_home = 1) OR (t.dest_purpose <> 10 and t.dest_is_work = 1)
+					AND t.dest_purpose=prev_t.dest_purpose;
 
-			UPDATE trip --Change code to pickup/dropoff when passenger number changes, and either duration is under 30 minutes or pickup/dropoff mentioned in dest_name
-				SET trip.dest_purpose = 9, trip.revision_code = CONCAT(trip.revision_code,'2,')
-				FROM trip 
-					JOIN person ON trip.personid=person.personid 
-					JOIN trip as next_trip ON trip.personid=next_trip.personid	AND trip.tripnum + 1 = next_trip.tripnum						
-				WHERE trip.travelers_total <> next_trip.travelers_total
+			UPDATE t --Change code to pickup/dropoff when passenger number changes, and either duration is under 30 minutes or pickup/dropoff mentioned in dest_name
+				SET t.dest_purpose = 9, t.revision_code = CONCAT(t.revision_code,'2,')
+				FROM trip AS t
+					JOIN person ON t.personid=person.personid 
+					JOIN trip as next_t ON t.personid=next_t.personid	AND t.tripnum + 1 = next_t.tripnum						
+				WHERE t.travelers_total <> next_t.travelers_total
 					AND person.age > 5
-					AND trip.dest_purpose IN(-9998,6,97)
-					AND DATEDIFF(minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 30;
+					AND t.dest_purpose IN(-9998,6,97)
+					AND DATEDIFF(minute, t.arrival_time_timestamp, next_t.depart_time_timestamp) < 30;
 			
-			UPDATE trip --changes code to 'family activity' when passenger number changes and duration is from 30mins to 4hrs
-				SET trip.dest_purpose = 56, trip.revision_code = CONCAT(trip.revision_code,'3,')
-				FROM trip 
-					JOIN person ON trip.personid=person.personid 
-					JOIN trip as next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
-				WHERE trip.travelers_total <> next_trip.travelers_total
+			UPDATE t --changes code to 'family activity' when passenger number changes and duration is from 30mins to 4hrs
+				SET t.dest_purpose = 56, t.revision_code = CONCAT(t.revision_code,'3,')
+				FROM trip AS t
+					JOIN person ON t.personid=person.personid 
+					JOIN trip as next_t ON t.personid=next_t.personid AND t.tripnum + 1 = next_t.tripnum
+				WHERE t.travelers_total <> next_t.travelers_total
 					AND person.age > 5
-					AND (trip.dest_purpose = 6 OR dbo.RgxFind(trip.dest_name,'(school|care)',1) = 1)
-					AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) Between 31 and 240;
+					AND (t.dest_purpose = 6 OR dbo.RgxFind(t.dest_name,'(school|care)',1) = 1)
+					AND DATEDIFF(Minute, t.arrival_time_timestamp, next_t.depart_time_timestamp) Between 31 and 240;
 
-			UPDATE trip --updates empty purpose code to 'school' when destination is school and duration > 30 minutes.
-				SET trip.dest_purpose = 6, trip.revision_code = CONCAT(trip.revision_code,'2,')
-				FROM trip 
-					JOIN trip as next_trip ON trip.hhid=next_trip.hhid AND trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
-				WHERE trip.dest_purpose = 97 AND trip.dest_name = 'school'
-					AND trip.travelers_total = 1
-					AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) > 30;		
+			UPDATE t --updates empty purpose code to 'school' when destination is school and duration > 30 minutes.
+				SET t.dest_purpose = 6, t.revision_code = CONCAT(t.revision_code,'2,')
+				FROM trip AS t
+					JOIN trip as next_t ON t.hhid=next_t.hhid AND t.personid=next_t.personid AND t.tripnum + 1 = next_t.tripnum
+				WHERE t.dest_purpose = 97 AND t.dest_name = 'school'
+					AND t.travelers_total = 1
+					AND DATEDIFF(Minute, t.arrival_time_timestamp, next_t.depart_time_timestamp) > 30;		
 
 		--Change 'Other' trip purpose when purpose is given in destination
 			UPDATE trip 	SET dest_purpose = 1,  revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose IN(-9998,97) AND dest_is_home = 1;
@@ -836,7 +836,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 				AND myself.dest_purpose = -9998 AND myself.mode_1 = -9998 AND family.dest_purpose <> -9998 AND family.mode_1 <> -9998)
 		UPDATE t
 			SET t.dest_purpose = ref_t.dest_purpose, 
-				t.mode_1 	   = ref_t.mode_1
+				t.mode_1 	   = ref_t.mode_1,
 				t.revision_code = CONCAT(t.revision_code,'5,')		
 			FROM trip AS t JOIN cte ON t.tripid = cte.self_tripid JOIN trip AS ref_t ON cte.referent_tripid = ref_t.tripid AND cte.referent = ref_t.personid
 			WHERE t.dest_purpose = -9998 AND t.mode_1 = -9998;
@@ -927,11 +927,10 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 					OR sum(CASE WHEN LEN(ti2.park_type) 			<>0 THEN 1 ELSE 0 END) > 1
 			UNION ALL SELECT ti3.personid, ti3.trip_link 	--sets with nonadjacent repeating transit lines
 				FROM trip_ingredient AS ti3 JOIN cte1 ON ti3.personid = cte1.personid AND ti3.trip_link = cte1.trip_link
-				WHERE dbo.RgxFind(cte1.transit_lines,'(\b\d+\b),.+(?=\1)',1)=1)
-		SELECT * FROM cte2;				
+				WHERE dbo.RgxFind(cte1.transit_lines,'(\b\d+\b),.+(?=\1)',1)=1)			
 		UPDATE ti
 			SET ti.trip_link = -1 * ti.trip_link
-			FROM trip_ingredient AS ti JOIN cte ON cte.personid = ti.personid AND cte.trip_link = ti.trip_link;
+			FROM trip_ingredient AS ti JOIN cte2 ON cte2.personid = ti.personid AND cte2.trip_link = ti.trip_link;
 		GO
 
 		-- delete the components that will get replaced with linked trips
@@ -946,7 +945,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		WITH cte_agg AS
 		(SELECT ti_agg.personid,
 				ti_agg.trip_link,
-				MAX(CASE WHEN ti_agg.dest_purpose = 60 THEN 0 ELSE ti_agg.dest_purpose) AS dest_purpose
+				MAX(CASE WHEN ti_agg.dest_purpose = 60 THEN 0 ELSE ti_agg.dest_purpose END) AS dest_purpose,
 				MAX(ti_agg.arrival_time_timestamp) 	AS arrival_time_timestamp,		MAX(ti_agg.hhmember1) 	AS hhmember1, 
 				SUM(ti_agg.trip_path_distance) 		AS trip_path_distance, 			MAX(ti_agg.hhmember2) 	AS hhmember2, 
 				SUM(ti_agg.google_duration) 		AS google_duration, 			MAX(ti_agg.hhmember3) 	AS hhmember3, 
@@ -994,6 +993,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 					(SELECT ',' + ti1.modes
 					FROM trip_ingredient AS ti1 
 					WHERE ti1.personid = ti_wndw.personid AND ti1.trip_link = ti_wndw.trip_link
+					GROUP BY ti1.modes
 					ORDER BY ti_wndw.personid DESC, ti_wndw.tripnum DESC
 					FOR XML PATH('')), 1, 1, NULL) AS modes,	
 				--STRING_AGG(ti2.transit_systems,',') OVER (PARTITION BY ti_wnd.trip_link ORDER BY ti_wndw.tripnum ASC) AS transit_systems,
@@ -1001,6 +1001,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 					(SELECT ',' + ti2.transit_systems
 					FROM trip_ingredient AS ti2
 					WHERE ti2.personid = ti_wndw.personid AND ti2.trip_link = ti_wndw.trip_link
+					GROUP BY ti2.transit_systems
 					ORDER BY ti_wndw.personid DESC, ti_wndw.tripnum DESC
 					FOR XML PATH('')), 1, 1, NULL) AS transit_systems,				
 				--STRING_AGG(ti_wnd.transit_lines,',') OVER (PARTITION BY trip_link ORDER BY ti_wndw.tripnum ASC) AS transit_lines	
@@ -1008,6 +1009,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 					(SELECT ',' + ti3.transit_lines
 					FROM trip_ingredient AS ti3 JOIN trip AS t ON ti3.personid = t.personid AND ti3.trip_link = t.tripnum
 					WHERE ti3.personid = ti_wndw.personid AND ti3.trip_link = ti_wndw.trip_link
+					GROUP BY ti3.transit_lines
 					ORDER BY ti_wndw.personid DESC, ti_wndw.tripnum DESC
 					FOR XML PATH('')), 1, 1, NULL) AS transit_lines	
 			FROM trip_ingredient as ti_wndw WHERE ti_wndw.trip_link > 0 )
@@ -1118,7 +1120,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 			FROM trip AS t;
 			 
 /* STEP 6. Insert trips for those who were reported as a passenger by another traveler but did not report the trip themselves */
-/* Currenty, using a tight constraint for overlap, this generates no trips -- may deserve further scrutiny  */
+/* Currently, using a tight constraint for overlap, this generates no trips -- may deserve further scrutiny  */
 
    DROP TABLE IF EXISTS silent_passenger_trip;
    GO
