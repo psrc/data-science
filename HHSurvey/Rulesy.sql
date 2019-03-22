@@ -780,24 +780,25 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 				SET t.dest_purpose = 9, t.revision_code = CONCAT(t.revision_code,'2,')
 				FROM trip AS t
 					JOIN person ON t.personid=person.personid 
-					JOIN trip as next_t ON t.personid=next_t.personid	AND t.tripnum + 1 = next_t.tripnum						
-				WHERE t.travelers_total <> next_t.travelers_total
-					AND person.age > 5
-					AND t.dest_purpose IN(-9998,6,97)
+					LEFT JOIN trip AS prev_t ON t.personid=prev_t.personid	AND t.tripnum - 1 = prevt_t.tripnum
+					LEFT JOIN trip AS next_t ON t.personid=next_t.personid	AND t.tripnum + 1 = next_t.tripnum						
+				WHERE person.age > 5 AND t.dest_purpose IN(-9998,6,97)
+					AND (t.travelers_total <> prev_t.travelers_total OR t.travelers_total <> next_t.travelers_total)
 					AND DATEDIFF(minute, t.arrival_time_timestamp, next_t.depart_time_timestamp) < 30;
 			
 			UPDATE t --changes code to 'family activity' when passenger number changes and duration is from 30mins to 4hrs
 				SET t.dest_purpose = 56, t.revision_code = CONCAT(t.revision_code,'3,')
 				FROM trip AS t
 					JOIN person ON t.personid=person.personid 
-					JOIN trip as next_t ON t.personid=next_t.personid AND t.tripnum + 1 = next_t.tripnum
-				WHERE t.travelers_total <> next_t.travelers_total
-					AND person.age > 5
+					LEFT JOIN trip AS prev_t ON t.personid=prev_t.personid	AND t.tripnum - 1 = prevt_t.tripnum
+					LEFT JOIN trip as next_t ON t.personid=next_t.personid AND t.tripnum + 1 = next_t.tripnum
+				WHERE person.age > 5
+					AND (t.travelers_total <> prev_t.travelers_total OR t.travelers_total <> next_t.travelers_total)
 					AND (t.dest_purpose = 6 OR dbo.RgxFind(t.dest_name,'(school|care)',1) = 1)
 					AND DATEDIFF(Minute, t.arrival_time_timestamp, next_t.depart_time_timestamp) Between 31 and 240;
 
 			UPDATE t --updates empty purpose code to 'school' when destination is school and duration > 30 minutes.
-				SET t.dest_purpose = 6, t.revision_code = CONCAT(t.revision_code,'2,')
+				SET t.dest_purpose = 6, t.revision_code = CONCAT(t.revision_code,'4,')
 				FROM trip AS t
 					JOIN trip as next_t ON t.hhid=next_t.hhid AND t.personid=next_t.personid AND t.tripnum + 1 = next_t.tripnum
 				WHERE t.dest_purpose = 97 AND t.dest_name = 'school'
@@ -805,21 +806,21 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 					AND DATEDIFF(Minute, t.arrival_time_timestamp, next_t.depart_time_timestamp) > 30;		
 
 		--Change 'Other' trip purpose when purpose is given in destination
-			UPDATE trip 	SET dest_purpose = 1,  revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose IN(-9998,97) AND dest_is_home = 1;
-			UPDATE trip 	SET dest_purpose = 10, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose IN(-9998,97) AND dest_is_work = 1;
-			UPDATE trip 	SET dest_purpose = 11, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dest_is_work <> 1 AND trip.dest_name = 'WORK';
-			UPDATE trip		SET dest_purpose = 30, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(grocery|costco|safeway|trader ?joe)',1) = 1;				
-			UPDATE trip		SET dest_purpose = 32, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(store)',1) = 1;	
-			UPDATE trip		SET dest_purpose = 33, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(bank|gas|post ?office|library|barber|hair)',1) = 1;				UPDATE trip		SET dest_purpose = 33, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(bank|gas|post ?office|library)',1) = 1;		
-			UPDATE trip		SET dest_purpose = 34, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(doctor|dentist|hospital|medical|health)',1) = 1;	
-			UPDATE trip		SET dest_purpose = 50, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(coffee|cafe|starbucks|lunch)',1) = 1;		
-			UPDATE trip		SET dest_purpose = 51, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'dog',1) = 1 AND dbo.RgxFind(dest_name,'(walk|park)',1) = 1;
-			UPDATE trip		SET dest_purpose = 51, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'\bwalk$',1) = 1;	
-			UPDATE trip		SET dest_purpose = 51, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'\bgym$',1) = 1;						
-			UPDATE trip		SET dest_purpose = 51, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'park',1) = 1 AND dbo.RgxFind(dest_name,'(parking|ride)',1) = 0;
-			UPDATE trip		SET dest_purpose = 53, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'casino',1) = 1;
-			UPDATE trip		SET dest_purpose = 54, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(church|volunteer)',1) = 1;
-			UPDATE trip		SET dest_purpose = 60, revision_code = CONCAT(revision_code,'4,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'\bbus\b|transit|\bferry\b|airport|\bstation\b',1) = 1;  
+			UPDATE trip 	SET dest_purpose = 1,  revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose IN(-9998,97) AND dest_is_home = 1;
+			UPDATE trip 	SET dest_purpose = 10, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose IN(-9998,97) AND dest_is_work = 1;
+			UPDATE trip 	SET dest_purpose = 11, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dest_is_work <> 1 AND trip.dest_name = 'WORK';
+			UPDATE trip		SET dest_purpose = 30, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(grocery|costco|safeway|trader ?joe)',1) = 1;				
+			UPDATE trip		SET dest_purpose = 32, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(store)',1) = 1;	
+			UPDATE trip		SET dest_purpose = 33, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(bank|gas|post ?office|library|barber|hair)',1) = 1;				UPDATE trip		SET dest_purpose = 33, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(bank|gas|post ?office|library)',1) = 1;		
+			UPDATE trip		SET dest_purpose = 34, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(doctor|dentist|hospital|medical|health)',1) = 1;	
+			UPDATE trip		SET dest_purpose = 50, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(coffee|cafe|starbucks|lunch)',1) = 1;		
+			UPDATE trip		SET dest_purpose = 51, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'dog',1) = 1 AND dbo.RgxFind(dest_name,'(walk|park)',1) = 1;
+			UPDATE trip		SET dest_purpose = 51, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'\bwalk$',1) = 1;	
+			UPDATE trip		SET dest_purpose = 51, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'\bgym$',1) = 1;						
+			UPDATE trip		SET dest_purpose = 51, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'park',1) = 1 AND dbo.RgxFind(dest_name,'(parking|ride)',1) = 0;
+			UPDATE trip		SET dest_purpose = 53, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'casino',1) = 1;
+			UPDATE trip		SET dest_purpose = 54, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(church|volunteer)',1) = 1;
+			UPDATE trip		SET dest_purpose = 60, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'\bbus\b|transit|\bferry\b|airport|\bstation\b',1) = 1;  
 		END
 		GO
 		EXECUTE dest_purpose_updates;
@@ -837,13 +838,13 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		UPDATE t
 			SET t.dest_purpose = ref_t.dest_purpose, 
 				t.mode_1 	   = ref_t.mode_1,
-				t.revision_code = CONCAT(t.revision_code,'5,')		
+				t.revision_code = CONCAT(t.revision_code,'6,')		
 			FROM trip AS t JOIN cte ON t.tripid = cte.self_tripid JOIN trip AS ref_t ON cte.referent_tripid = ref_t.tripid AND cte.referent = ref_t.personid
 			WHERE t.dest_purpose = -9998 AND t.mode_1 = -9998;
 
 		--update modes on the extremes of speed and distance
-		UPDATE t SET t.mode_1 = 31, t.revision_code = CONCAT(t.revision_code,'6,')	FROM trip AS t WHERE (t.mode_1 = -9998 OR t.mode_1 IS NULL) AND t.trip_path_distance > 200 AND t.speed_mph > 200;
-		UPDATE t SET t.mode_1 = 1,  t.revision_code = CONCAT(t.revision_code,'6,') 	FROM trip AS t WHERE (t.mode_1 = -9998 OR t.mode_1 IS NULL) AND t.trip_path_distance < 0.6 AND t.speed_mph < 5;	
+		UPDATE t SET t.mode_1 = 31, t.revision_code = CONCAT(t.revision_code,'7,')	FROM trip AS t WHERE (t.mode_1 = -9998 OR t.mode_1 IS NULL) AND t.trip_path_distance > 200 AND t.speed_mph > 200;
+		UPDATE t SET t.mode_1 = 1,  t.revision_code = CONCAT(t.revision_code,'7,') 	FROM trip AS t WHERE (t.mode_1 = -9998 OR t.mode_1 IS NULL) AND t.trip_path_distance < 0.6 AND t.speed_mph < 5;	
 		
 /* STEP 4.	Trip linking */
 
@@ -909,6 +910,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 				STUFF((SELECT ',' + ti0.transit_lines
 					FROM trip_ingredient AS ti0 
 					WHERE ti0.personid = ti_wndw.personid AND ti0.trip_link = ti_wndw.trip_link
+					GROUP BY ti0.transit_lines
 					ORDER BY ti_wndw.personid DESC, ti_wndw.tripnum DESC
 					FOR XML PATH('')), 1, 1, NULL),'(\b\d+\b),(?=\1)','',1)) AS transit_lines	
 				FROM trip_ingredient as ti_wndw WHERE ti_wndw.transit_lines IS NOT NULL),
@@ -1044,7 +1046,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 																		t.ferry_type	= lt.ferry_type, 
 																		t.rail_type		= lt.rail_type, 
 																		t.air_type		= lt.air_type,	
-				t.revision_code 		= CONCAT(t.revision_code, '7,')
+				t.revision_code 		= CONCAT(t.revision_code, '8,')
 			FROM trip AS t JOIN linked_trip AS lt ON t.personid = lt.personid AND t.tripnum = lt.trip_link;
 
 /* STEP 5.	Mode number standardization, including access and egress characterization */
@@ -1161,7 +1163,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		t.mode_acc, t.mode_egr, t.mode_1, t.mode_2, t.mode_3, t.mode_4, t.change_vehicles, t.transit_system_1, t.transit_system_2, t.transit_system_3,
 		t.park_ride_area_start, t.park_ride_area_end, t.park_ride_lot_start, t.park_ride_lot_end, t.park, t.park_type, t.park_pay,
 		t.toll, t.toll_pay, t.taxi_type, t.taxi_pay, t.bus_type, t.bus_pay, t.bus_cost_dk, t.ferry_type, t.ferry_pay, t.ferry_cost_dk, t.rail_type, t.rail_pay, t.rail_cost_dk, t.air_type, t.air_pay, t.airfare_cost_dk,
-		t.origin_geom, t.origin_lat, t.origin_lng, t.dest_geom, t.dest_county, t.dest_city, t.dest_zip, t.dest_is_home, t.dest_is_work, 1 AS psrc_inserted, CONCAT(t.revision_code, '6,') AS revision_code
+		t.origin_geom, t.origin_lat, t.origin_lng, t.dest_geom, t.dest_county, t.dest_city, t.dest_zip, t.dest_is_home, t.dest_is_work, 1 AS psrc_inserted, CONCAT(t.revision_code, '9,') AS revision_code
 	FROM silent_passenger_trip AS spt -- insert only when the time midpoint of the CTE trip doesn't intersect any trip by the same person; doesn't matter if an intersecting trip reports the other hhmembers or not.
         JOIN trip as t ON spt.tripid = t.tripid
 		LEFT JOIN trip as compare_t ON spt.passengerid = compare_t.personid
