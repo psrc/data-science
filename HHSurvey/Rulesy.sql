@@ -8,6 +8,8 @@
 
 */
 
+/* STEP 0. 	Settings and steps independent of data tables.  */
+
 USE Sandbox --start in a fresh db if there is danger of overwriting tables. Queries use the default user schema.
 GO
 SET ANSI_NULLS ON
@@ -15,18 +17,20 @@ GO
 SET QUOTED_IDENTIFIER ON
 GO
 
-DROP SEQUENCE IF EXISTS tripid_increment, workhorse_sequence;
-DROP TABLE IF EXISTS household, person, tripx_raw, trip, transitmodes, automodes, pedmodes, walkmodes, nontransitmodes, trip_ingredients;
+		DROP SEQUENCE IF EXISTS tripid_increment;
+		CREATE SEQUENCE tripid_increment AS int START WITH 1 INCREMENT BY 1 NO CYCLE;  -- Create sequence object to generate tripid for new records & add indices
+		DROP TABLE IF EXISTS household, person, tripx_raw, trip, transitmodes, automodes, pedmodes, walkmodes, nontransitmodes, trip_ingredients;
 
-CREATE TABLE transitmodes (mode_id int PRIMARY KEY NOT NULL);
-CREATE TABLE automodes (mode_id int PRIMARY KEY NOT NULL);
-CREATE TABLE pedmodes (mode_id int PRIMARY KEY NOT NULL);
-CREATE TABLE nontransitmodes (mode_id int PRIMARY KEY NOT NULL);
-GO
-INSERT INTO transitmodes(mode_id) VALUES (23),(24),(26),(27),(28),(31),(32),(41),(42),(52);
-INSERT INTO automodes(mode_id) values (3),(4),(5),(6),(7),(8),(9),(10),(11),(12),(16),(17),(18),(21),(22),(33),(34),(36),(37),(47);
-INSERT INTO pedmodes(mode_id) values(1),(2);
-INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT mode_id FROM automodes;	
+		--Create mode uber-categories for access/egress characterization, etc.
+		CREATE TABLE transitmodes (mode_id int PRIMARY KEY NOT NULL);
+		CREATE TABLE automodes (mode_id int PRIMARY KEY NOT NULL);
+		CREATE TABLE pedmodes (mode_id int PRIMARY KEY NOT NULL);
+		CREATE TABLE nontransitmodes (mode_id int PRIMARY KEY NOT NULL);
+		GO
+		INSERT INTO transitmodes(mode_id) VALUES (23),(24),(26),(27),(28),(31),(32),(41),(42),(52);
+		INSERT INTO automodes(mode_id) values (3),(4),(5),(6),(7),(8),(9),(10),(11),(12),(16),(17),(18),(21),(22),(33),(34),(36),(37),(47);
+		INSERT INTO pedmodes(mode_id) values(1),(2);
+		INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT mode_id FROM automodes;	
 
 /* STEP 1. 	Load data from fixed format .csv files.  */
 	--	Due to field import difficulties, the trip table is imported in two steps--a loosely typed table, then queried using CAST into a tightly typed table.
@@ -333,6 +337,8 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		BULK INSERT person		FROM '\\aws-prod-file01\SQL2016\DSADEV\2-Person.csv'	WITH (FIELDTERMINATOR=',', FIRSTROW = 2);
 		BULK INSERT tripx_raw	FROM '\\aws-prod-file01\SQL2016\DSADEV\5-Trip.csv'		WITH (FIELDTERMINATOR=',', FIRSTROW = 2);
 
+		DROP TABLE IF EXISTS trip;
+		GO
 		CREATE TABLE trip (
 			[hhid] [int] NOT NULL,
 			[personid] [int] NOT NULL,
@@ -666,8 +672,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		UPDATE trip	SET dest_geom = 	geometry::STPointFromText('POINT(' + CAST(dest_lng 	 AS VARCHAR(20)) + ' ' + CAST(dest_lat 	 AS VARCHAR(20)) + ')', 4326),
 						origin_geom = 	geometry::STPointFromText('POINT(' + CAST(origin_lng AS VARCHAR(20)) + ' ' + CAST(origin_lat AS VARCHAR(20)) + ')', 4326);
 		ALTER TABLE trip ADD CONSTRAINT PK_trip PRIMARY KEY CLUSTERED (tripid) WITH FILLFACTOR=80;
-		DROP SEQUENCE IF EXISTS tripid_increment;
-		CREATE SEQUENCE tripid_increment AS int START WITH 1 INCREMENT BY 1 NO CYCLE;  -- Create sequence object to generate tripid for new records & add indices
+
 	/*	DROP SEQUENCE IF EXISTS workhorse_sequence;
 		CREATE SEQUENCE workhorse_sequence AS int START WITH 1 INCREMENT BY 1 NO CYCLE; -- Create second sequence object for linking purposes; doesn't appear to be necessary */
 		ALTER TABLE trip ADD CONSTRAINT tripid_autonumber DEFAULT NEXT VALUE FOR tripid_increment FOR tripid;
@@ -675,18 +680,24 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		CREATE INDEX tripnum_idx ON trip (tripnum ASC);
 		CREATE INDEX dest_purpose_idx ON trip (dest_purpose);
 		CREATE INDEX travelers_total_idx ON trip(travelers_total);
-		
-		/*UPDATE household SET home_geom = geometry::STPointFromText('POINT(' + CAST(reported_lng AS VARCHAR(20)) + ' ' + CAST(reported_lat AS VARCHAR(20)) + ')', 4326);
-		UPDATE person SET work_geom = geometry::STPointFromText('POINT(' + CAST(work_lng AS VARCHAR(20)) + ' ' + CAST(work_lat AS VARCHAR(20)) + ')', 4326);*/
-
-		GO
-	 
+		GO 
 		CREATE SPATIAL INDEX dest_geom_idx ON trip(dest_geom)
 			USING GEOMETRY_AUTO_GRID
 			WITH (BOUNDING_BOX= (xmin=-157.858, ymin=-20, xmax=124.343, ymax=57.803));
 
 	-- Convert rMoves trip distances to miles; rSurvey records are already reported in miles
 		UPDATE trip SET trip.trip_path_distance = trip.trip_path_distance / 1609.344 WHERE trip.hhgroup = 1
+
+	-- Revise travelers count to reflect passengers (lazy response?)
+		UPDATE t
+			SET t.travelers_hh =  (SELECT count(member) FROM (VALUES(t.hhmember1),(t.hhmember2),(t.hhmember3),(t.hhmember4),(t.hhmember5),(t.hhmember6),(t.hhmember7),(t.hhmember8),(t.hhmember9)) AS hhmembers(member))
+			FROM trip AS t
+			WHERE (SELECT count(member) FROM (VALUES(t.hhmember1),(t.hhmember2),(t.hhmember3),(t.hhmember4),(t.hhmember5),(t.hhmember6),(t.hhmember7),(t.hhmember8),(t.hhmember9)) AS hhmembers(member)) <> t.travelers_hh;
+		
+		UPDATE t
+			SET t.travelers_total = t.travelers_hh
+			FROM trip AS t
+			WHERE t.travelers_total < t.travelers_hh;
 
 	-- Tripnum must be sequential or later steps will fail. Create procedure and employ where required.
 		DROP PROCEDURE IF EXISTS tripnum_update;
@@ -776,33 +787,33 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 				WHERE (t.dest_purpose <> 1 and t.dest_is_home = 1) OR (t.dest_purpose <> 10 and t.dest_is_work = 1)
 					AND t.dest_purpose=prev_t.dest_purpose;
 
-			UPDATE t --Change code to pickup/dropoff when passenger number changes, and either duration is under 30 minutes or pickup/dropoff mentioned in dest_name
+			UPDATE t --Change code to pickup/dropoff when passenger number changes and duration is under 30 minutes
 				SET t.dest_purpose = 9, t.revision_code = CONCAT(t.revision_code,'2,')
 				FROM trip AS t
-					JOIN person ON t.personid=person.personid 
-					LEFT JOIN trip AS prev_t ON t.personid=prev_t.personid	AND t.tripnum - 1 = prevt_t.tripnum
-					LEFT JOIN trip AS next_t ON t.personid=next_t.personid	AND t.tripnum + 1 = next_t.tripnum						
-				WHERE person.age > 5 AND t.dest_purpose IN(-9998,6,97)
-					AND (t.travelers_total <> prev_t.travelers_total OR t.travelers_total <> next_t.travelers_total)
+					JOIN person AS p ON t.personid=p.personid 
+					JOIN trip AS next_t ON t.personid=next_t.personid	AND t.tripnum + 1 = next_t.tripnum						
+				WHERE p.age > 4 AND (p.student = 1 OR p.student IS NULL) AND t.dest_purpose IN(-9998,6,97)
+					AND t.travelers_total <> next_t.travelers_total
 					AND DATEDIFF(minute, t.arrival_time_timestamp, next_t.depart_time_timestamp) < 30;
 			
-			UPDATE t --changes code to 'family activity' when passenger number changes and duration is from 30mins to 4hrs
+			UPDATE t --changes code to 'family activity' when adult is present, multiple people involved and duration is from 30mins to 4hrs
 				SET t.dest_purpose = 56, t.revision_code = CONCAT(t.revision_code,'3,')
 				FROM trip AS t
-					JOIN person ON t.personid=person.personid 
-					LEFT JOIN trip AS prev_t ON t.personid=prev_t.personid	AND t.tripnum - 1 = prevt_t.tripnum
+					JOIN person AS p ON t.personid=p.personid 
 					LEFT JOIN trip as next_t ON t.personid=next_t.personid AND t.tripnum + 1 = next_t.tripnum
-				WHERE person.age > 5
-					AND (t.travelers_total <> prev_t.travelers_total OR t.travelers_total <> next_t.travelers_total)
+				WHERE p.age > 4 AND (p.student = 1 OR p.student IS NULL)
+					AND (t.travelers_total > 1 OR next_t.travelers_total > 1)
 					AND (t.dest_purpose = 6 OR dbo.RgxFind(t.dest_name,'(school|care)',1) = 1)
-					AND DATEDIFF(Minute, t.arrival_time_timestamp, next_t.depart_time_timestamp) Between 31 and 240;
+					AND DATEDIFF(Minute, t.arrival_time_timestamp, next_t.depart_time_timestamp) Between 30 and 250;
 
-			UPDATE t --updates empty purpose code to 'school' when destination is school and duration > 30 minutes.
+			UPDATE t --updates empty purpose code to 'school' when single student traveler with school destination and duration > 30 minutes.
 				SET t.dest_purpose = 6, t.revision_code = CONCAT(t.revision_code,'4,')
 				FROM trip AS t
 					JOIN trip as next_t ON t.hhid=next_t.hhid AND t.personid=next_t.personid AND t.tripnum + 1 = next_t.tripnum
+					JOIN person AS p ON t.personid = p.personid
 				WHERE t.dest_purpose = 97 AND t.dest_name = 'school'
 					AND t.travelers_total = 1
+					AND p.student IN(2,3,4)
 					AND DATEDIFF(Minute, t.arrival_time_timestamp, next_t.depart_time_timestamp) > 30;		
 
 		--Change 'Other' trip purpose when purpose is given in destination
@@ -810,8 +821,8 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 			UPDATE trip 	SET dest_purpose = 10, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose IN(-9998,97) AND dest_is_work = 1;
 			UPDATE trip 	SET dest_purpose = 11, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dest_is_work <> 1 AND trip.dest_name = 'WORK';
 			UPDATE trip		SET dest_purpose = 30, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(grocery|costco|safeway|trader ?joe)',1) = 1;				
-			UPDATE trip		SET dest_purpose = 32, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(store)',1) = 1;	
-			UPDATE trip		SET dest_purpose = 33, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(bank|gas|post ?office|library|barber|hair)',1) = 1;				UPDATE trip		SET dest_purpose = 33, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(bank|gas|post ?office|library)',1) = 1;		
+			UPDATE trip		SET dest_purpose = 32, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'\b(store)\b',1) = 1;	
+			UPDATE trip		SET dest_purpose = 33, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'\b(bank|gas|post ?office|library|barber|hair)\b',1) = 1;				UPDATE trip		SET dest_purpose = 33, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(bank|gas|post ?office|library)',1) = 1;		
 			UPDATE trip		SET dest_purpose = 34, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(doctor|dentist|hospital|medical|health)',1) = 1;	
 			UPDATE trip		SET dest_purpose = 50, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(coffee|cafe|starbucks|lunch)',1) = 1;		
 			UPDATE trip		SET dest_purpose = 51, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'dog',1) = 1 AND dbo.RgxFind(dest_name,'(walk|park)',1) = 1;
@@ -820,7 +831,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 			UPDATE trip		SET dest_purpose = 51, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'park',1) = 1 AND dbo.RgxFind(dest_name,'(parking|ride)',1) = 0;
 			UPDATE trip		SET dest_purpose = 53, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'casino',1) = 1;
 			UPDATE trip		SET dest_purpose = 54, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'(church|volunteer)',1) = 1;
-			UPDATE trip		SET dest_purpose = 60, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'\bbus\b|transit|\bferry\b|airport|\bstation\b',1) = 1;  
+			UPDATE trip		SET dest_purpose = 60, revision_code = CONCAT(revision_code,'5,')	WHERE dest_purpose = 97 AND dbo.RgxFind(dest_name,'\b(bus|transit|ferry|airport|station)\b',1) = 1;  
 		END
 		GO
 		EXECUTE dest_purpose_updates;
@@ -879,9 +890,10 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		GO
 		SELECT next_trip.*, CAST(0 AS int) AS trip_link INTO trip_ingredient
 		FROM trip JOIN trip AS next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum
-			WHERE 	trip.dest_is_home IS NULL AND trip.dest_is_work IS NULL AND 
-				((trip.dest_purpose = 60 AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 30)
-			OR 	(trip.dest_purpose = next_trip.dest_purpose AND trip.dest_purpose <> 9 
+			WHERE 	trip.dest_is_home IS NULL AND trip.dest_is_work IS NULL 
+				AND trip.travelers_total = next_trip.travelers_total
+				AND ((trip.dest_purpose = 60 AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 30)
+				OR 	(trip.dest_purpose = next_trip.dest_purpose AND trip.dest_purpose <> 9 
 					AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 15 
 					AND (trip.mode_1<>next_trip.mode_1 OR (trip.mode_1 = next_trip.mode_1 AND EXISTS (SELECT trip.mode_1 FROM transitmodes)))));
 		
@@ -1145,7 +1157,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 	DECLARE @respondent int 
 	SET @respondent = 1;
     INSERT INTO trip
-		(hhid, personid, pernum,
+		(hhid, personid, pernum, hhgroup,
 		depart_time_timestamp, arrival_time_timestamp,
 		dest_name, dest_address, dest_lat, dest_lng,
 		trip_path_distance, google_duration, reported_duration,
@@ -1155,7 +1167,7 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		toll, toll_pay, taxi_type, taxi_pay, bus_type, bus_pay, bus_cost_dk, ferry_type, ferry_pay, ferry_cost_dk, rail_type, rail_pay, rail_cost_dk, air_type, air_pay, airfare_cost_dk,
 		origin_geom, origin_lat, origin_lng, dest_geom, dest_county, dest_city, dest_zip, dest_is_home, dest_is_work, psrc_inserted, revision_code)
 	SELECT -- select fields necessary for new trip records	
-		t.hhid, spt.passengerid AS personid, CAST(RIGHT(spt.passengerid,2) AS int) AS pernum, 
+		t.hhid, spt.passengerid AS personid, CAST(RIGHT(spt.passengerid,2) AS int) AS pernum, t.hhgroup,
 		t.depart_time_timestamp, t.arrival_time_timestamp,
 		t.dest_name, t.dest_address, t.dest_lat, t.dest_lng,
 		t.trip_path_distance, t.google_duration, t.reported_duration,
@@ -1164,12 +1176,12 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
 		t.park_ride_area_start, t.park_ride_area_end, t.park_ride_lot_start, t.park_ride_lot_end, t.park, t.park_type, t.park_pay,
 		t.toll, t.toll_pay, t.taxi_type, t.taxi_pay, t.bus_type, t.bus_pay, t.bus_cost_dk, t.ferry_type, t.ferry_pay, t.ferry_cost_dk, t.rail_type, t.rail_pay, t.rail_cost_dk, t.air_type, t.air_pay, t.airfare_cost_dk,
 		t.origin_geom, t.origin_lat, t.origin_lng, t.dest_geom, t.dest_county, t.dest_city, t.dest_zip, t.dest_is_home, t.dest_is_work, 1 AS psrc_inserted, CONCAT(t.revision_code, '9,') AS revision_code
-	FROM silent_passenger_trip AS spt -- insert only when the time midpoint of the CTE trip doesn't intersect any trip by the same person; doesn't matter if an intersecting trip reports the other hhmembers or not.
+	FROM silent_passenger_trip AS spt -- insert only when the CTE trip doesn't overlap any trip by the same person; doesn't matter if an intersecting trip reports the other hhmembers or not.
         JOIN trip as t ON spt.tripid = t.tripid
 		LEFT JOIN trip as compare_t ON spt.passengerid = compare_t.personid
 		WHERE compare_t.personid IS NULL AND spt.respondent = @respondent
-			AND (t.depart_time_timestamp NOT BETWEEN DATEADD(Minute, -5, compare_t.depart_time_timestamp) AND DATEADD(Minute, 5, compare_t.arrival_time_timestamp))
-			AND (t.arrival_time_timestamp NOT BETWEEN DATEADD(Minute, -5, compare_t.depart_time_timestamp) AND DATEADD(Minute, 5, compare_t.arrival_time_timestamp));
+			AND NOT EXISTS(SELECT 1 WHERE (t.depart_time_timestamp BETWEEN compare_t.depart_time_timestamp AND compare_t.arrival_time_timestamp)
+			AND (t.arrival_time_timestamp NOT BETWEEN compare_t.depart_time_timestamp AND compare_t.arrival_time_timestamp));
 	SET @respondent = @respondent + 1	
 	END
 	GO
@@ -1286,11 +1298,10 @@ INSERT INTO nontransitmodes(mode_id) SELECT mode_id FROM pedmodes UNION SELECT m
     					OR  (trip.dest_purpose IN(30,33,34,50)      			AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) > 180)
    						OR  (trip.dest_purpose IN(32,51,52,53,54,56,60,61,62) 	AND DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) > 300)
 
-			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum, 		  'suspected drop-off or pick-up coded as school trip' AS error_flag
+			UNION ALL SELECT trip.tripid, trip.personid, trip.tripnum, 		  				   'non-student reporting school trip' AS error_flag
 				FROM trip JOIN trip as next_trip ON trip.personid=next_trip.personid AND trip.tripnum + 1 = next_trip.tripnum JOIN person ON trip.personid=person.personid 					
 				WHERE trip.dest_purpose = 6		
-					AND ((person.student NOT IN(2,3,4))
-						OR (DATEDIFF(Minute, trip.arrival_time_timestamp, next_trip.depart_time_timestamp) < 20)))
+					AND (person.student NOT IN(2,3,4) OR person.student IS NULL) AND person.age > 4)
 		INSERT INTO trip_error_flags (tripid, personid, tripnum, error_flag)
 			SELECT tripid, personid, tripnum, error_flag FROM error_flag_compilation GROUP BY tripid, personid, tripnum, error_flag;
 		GO
