@@ -919,7 +919,7 @@ GO
 		-- denote trips with too many components or other attributes suggesting multiple trips, for later examination.  
 		WITH cte_a AS																				--non-adjacent repeated transit line
 			(SELECT DISTINCT ti_wndw1.personid, ti_wndw1.trip_link, dbo.TRIM(dbo.RgxReplace(
-				STUFF((SELECT ',' + ti0.transit_lines
+				STUFF((SELECT ',' + ti1.transit_lines
 					FROM trip_ingredient AS ti1 
 					WHERE ti1.personid = ti_wndw1.personid AND ti1.trip_link = ti_wndw1.trip_link
 					GROUP BY ti1.transit_lines
