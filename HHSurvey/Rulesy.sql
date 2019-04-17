@@ -917,31 +917,43 @@ GO
 			SELECT t.*, t.tripnum AS trip_link FROM trip AS t JOIN trip_ingredient AS ti ON t.personid = ti.personid AND t.tripnum = ti.trip_link AND t.tripnum = ti.tripnum - 1;
 
 		-- denote trips with too many components or other attributes suggesting multiple trips, for later examination.  
-		WITH cte1 AS
-			(SELECT DISTINCT ti_wndw.personid, ti_wndw.trip_link, dbo.TRIM(dbo.RgxReplace(
+		WITH cte_a AS																				--non-adjacent repeated transit line
+			(SELECT DISTINCT ti_wndw1.personid, ti_wndw1.trip_link, dbo.TRIM(dbo.RgxReplace(
 				STUFF((SELECT ',' + ti0.transit_lines
-					FROM trip_ingredient AS ti0 
-					WHERE ti0.personid = ti_wndw.personid AND ti0.trip_link = ti_wndw.trip_link
-					GROUP BY ti0.transit_lines
-					ORDER BY ti_wndw.personid DESC, ti_wndw.tripnum DESC
+					FROM trip_ingredient AS ti1 
+					WHERE ti1.personid = ti_wndw1.personid AND ti1.trip_link = ti_wndw1.trip_link
+					GROUP BY ti1.transit_lines
+					ORDER BY ti_wndw1.personid DESC, ti_wndw1.tripnum DESC
 					FOR XML PATH('')), 1, 1, NULL),'(\b\d+\b),(?=\1)','',1)) AS transit_lines	
-				FROM trip_ingredient as ti_wndw WHERE ti_wndw.transit_lines IS NOT NULL),
+				FROM trip_ingredient as ti_wndw1 WHERE ti_wndw1.transit_lines IS NOT NULL),
+		cte_b AS 
+			(SELECT DISTINCT ti_wndw2.personid, ti_wndw2.trip_link, dbo.TRIM(dbo.RgxReplace(
+				STUFF((SELECT ',' + ti2.modes
+					FROM trip_ingredient AS ti2
+					WHERE ti2.personid = ti_wndw2.personid AND ti2.trip_link = ti_wndw2.trip_link
+					GROUP BY ti2.modes
+					ORDER BY ti_wndw2.personid DESC, ti_wndw2.tripnum DESC
+					FOR XML PATH('')), 1, 1, NULL),'(\b\d+\b),(?=\1)','',1)) AS modes	
+				FROM trip_ingredient as ti_wndw2),
 		cte2 AS 
-			(SELECT ti1.personid, ti1.trip_link 			--sets with more than 5 trip components
-				FROM trip_ingredient as ti1 GROUP BY ti1.personid, ti1.trip_link 
-				HAVING count(*) > 5
-			UNION ALL SELECT ti2.personid, ti2.trip_link	--sets with two items that each denote a separate trip
-				FROM trip_ingredient as ti2 GROUP BY ti2.personid, ti2.trip_link
-				HAVING sum(CASE WHEN LEN(ti2.pool_start) 			<>0 THEN 1 ELSE 0 END) > 1
-					OR sum(CASE WHEN LEN(ti2.change_vehicles) 		<>0 THEN 1 ELSE 0 END) > 1
-					OR sum(CASE WHEN LEN(ti2.park_ride_area_start) 	<>0 THEN 1 ELSE 0 END) > 1
-					OR sum(CASE WHEN LEN(ti2.park_ride_area_end) 	<>0 THEN 1 ELSE 0 END) > 1
-					OR sum(CASE WHEN LEN(ti2.park_ride_lot_start) 	<>0 THEN 1 ELSE 0 END) > 1
-					OR sum(CASE WHEN LEN(ti2.park_ride_lot_end) 	<>0 THEN 1 ELSE 0 END) > 1
-					OR sum(CASE WHEN LEN(ti2.park_type) 			<>0 THEN 1 ELSE 0 END) > 1
-			UNION ALL SELECT ti3.personid, ti3.trip_link 	--sets with nonadjacent repeating transit lines
-				FROM trip_ingredient AS ti3 JOIN cte1 ON ti3.personid = cte1.personid AND ti3.trip_link = cte1.trip_link
-				WHERE dbo.RgxFind(cte1.transit_lines,'(\b\d+\b),.+(?=\1)',1)=1)			
+			(SELECT ti3.personid, ti3.trip_link 			--sets with more than 4 trip components
+				FROM trip_ingredient as ti3 GROUP BY ti3.personid, ti3.trip_link 
+				HAVING count(*) > 4
+			UNION ALL SELECT ti4.personid, ti4.trip_link	--sets with two items that each denote a separate trip
+				FROM trip_ingredient as ti4 GROUP BY ti4.personid, ti4.trip_link
+				HAVING sum(CASE WHEN LEN(ti4.pool_start) 			<>0 THEN 1 ELSE 0 END) > 1
+					OR sum(CASE WHEN LEN(ti4.change_vehicles) 		<>0 THEN 1 ELSE 0 END) > 1
+					OR sum(CASE WHEN LEN(ti4.park_ride_area_start) 	<>0 THEN 1 ELSE 0 END) > 1
+					OR sum(CASE WHEN LEN(ti4.park_ride_area_end) 	<>0 THEN 1 ELSE 0 END) > 1
+					OR sum(CASE WHEN LEN(ti4.park_ride_lot_start) 	<>0 THEN 1 ELSE 0 END) > 1
+					OR sum(CASE WHEN LEN(ti4.park_ride_lot_end) 	<>0 THEN 1 ELSE 0 END) > 1
+					OR sum(CASE WHEN LEN(ti4.park_type) 			<>0 THEN 1 ELSE 0 END) > 1
+			UNION ALL SELECT cte_a.personid, cte_a.trip_link 	--sets with nonadjacent repeating transit lines (i.e., return trip)
+				FROM cte_a
+				WHERE dbo.RgxFind(cte_a.transit_lines,'(\b\d+\b),.+(?=\1)',1)=1	
+			UNION ALL SELECT cte_b.personid, cte_b.trip_link 	--sets with a pair of modes repeating in reverse (i.e., return trip)
+				FROM cte_b
+				WHERE dbo.RgxFind(cte_b.modes,'\b(\d+),(\d+)\b,.+(?=\2,\1)',1)=1)		
 		UPDATE ti
 			SET ti.trip_link = -1 * ti.trip_link
 			FROM trip_ingredient AS ti JOIN cte2 ON cte2.personid = ti.personid AND cte2.trip_link = ti.trip_link;
@@ -1065,9 +1077,9 @@ GO
 
 		--eliminate repeated values for modes, transit_systems, and transit_lines
 		UPDATE t 
-			SET t.modes				= dbo.TRIM(dbo.RgxReplace(t.modes,'(-?\b\d+\b),(?=\1)','',1)),
-				t.transit_systems 	= dbo.TRIM(dbo.RgxReplace(t.transit_systems,'(\b\d+\b),(?=\1)','',1)), 
-				t.transit_lines 	= dbo.TRIM(dbo.RgxReplace(t.transit_lines,'(\b\d+\b),(?=\1)','',1))
+			SET t.modes				= dbo.TRIM(dbo.RgxReplace(t.modes,'(-?\b\d+\b),(?=\b\1\b)','',1)),
+				t.transit_systems 	= dbo.TRIM(dbo.RgxReplace(t.transit_systems,'(\b\d+\b),(?=\b\1\b)','',1)), 
+				t.transit_lines 	= dbo.TRIM(dbo.RgxReplace(t.transit_lines,'(\b\d+\b),(?=\b\1\b)','',1))
 			FROM trip AS t;
 
 		EXECUTE tripnum_update; 
@@ -1076,52 +1088,63 @@ GO
 
 		-- Characterize access and egress trips, separately for 1) transit trips and 2) auto trips.  (Bike/Ped trips have no access/egress)
 		-- [Unions must be used here; otherwise the VALUE set from the dbo.Rgx table object gets reused across cte fields.]
-		WITH cte_acc_egr  AS 
+		WITH cte_acc_egr1  AS 
 		(	SELECT t1.personid, t1.tripnum, 'A' AS label, 'transit' AS trip_type,
-				(SELECT MAX(CAST(VALUE AS int)) FROM STRING_SPLIT(dbo.RgxExtract(t1.modes,'^(\b(?:1|2|3|4|5|6|7|8|9|10|11|12|16|17|18|21|22|33|34|36|37|47)\b,?)+',1),',')) AS link_value
-			FROM trip AS t1 WHERE EXISTS (SELECT 1 FROM STRING_SPLIT(t1.modes,',') WHERE VALUE IN(SELECT mode_id FROM transitmodes))
+				(SELECT MAX(CAST(VALUE AS int)) FROM STRING_SPLIT(dbo.RgxExtract(t1.modes,'^((?:1|2|3|4|5|6|7|8|9|10|11|12|16|17|18|21|22|33|34|36|37|47),)+',1),',')) AS link_value
+			FROM trip AS t1 WHERE EXISTS (SELECT 1 FROM STRING_SPLIT(t1.modes,',') WHERE VALUE IN(SELECT mode_id FROM transitmodes)) 
+								AND dbo.RgxExtract(t1.modes,'^(\b(?:1|2|3|4|5|6|7|8|9|10|11|12|16|17|18|21|22|33|34|36|37|47)\b,?)+',1) IS NOT NULL
 			UNION ALL 
 			SELECT t2.personid, t2.tripnum, 'E' AS label, 'transit' AS trip_type,	
-				(SELECT MAX(CAST(VALUE AS int)) FROM STRING_SPLIT(dbo.RgxExtract(t2.modes,'(,\b(?:1|2|3|4|5|6|7|8|9|10|11|12|16|17|18|21|22|33|34|36|37|47)\b)+$',1),',')) AS link_value 
+				(SELECT MAX(CAST(VALUE AS int)) FROM STRING_SPLIT(dbo.RgxExtract(t2.modes,'(,(?:1|2|3|4|5|6|7|8|9|10|11|12|16|17|18|21|22|33|34|36|37|47))+$',1),',')) AS link_value 
 			FROM trip AS t2 WHERE EXISTS (SELECT 1 FROM STRING_SPLIT(t2.modes,',') WHERE VALUE IN(SELECT mode_id FROM transitmodes))
+								AND dbo.RgxExtract(t2.modes,'^(\b(?:1|2|3|4|5|6|7|8|9|10|11|12|16|17|18|21|22|33|34|36|37|47)\b,?)+',1) IS NOT NULL			
 			UNION ALL 
 			SELECT t3.personid, t3.tripnum, 'A' AS label, 'auto' AS trip_type,
-				(SELECT MAX(CAST(VALUE AS int)) FROM STRING_SPLIT(dbo.RgxReplace(t3.modes,'^(\b(?:1|2)\b,?)+','',1),',')) AS link_value
+				(SELECT MAX(CAST(VALUE AS int)) FROM STRING_SPLIT(dbo.RgxExtract(t3.modes,'^((?:1|2)\b,?)+',1),',')) AS link_value
 			FROM trip AS t3 WHERE EXISTS (SELECT 1 FROM STRING_SPLIT(t3.modes,',') WHERE VALUE IN(SELECT mode_id FROM automodes)) 
 								  AND NOT EXISTS (SELECT 1 FROM STRING_SPLIT(t3.modes,',') WHERE VALUE IN(SELECT mode_id FROM transitmodes))
+								  AND dbo.RgxReplace(t3.modes,'^(\b(?:1|2)\b,?)+','',1) IS NOT NULL
 			UNION ALL 
 			SELECT t4.personid, t4.tripnum, 'E' AS label, 'auto' AS trip_type,
-				(SELECT MAX(CAST(VALUE AS int)) FROM STRING_SPLIT(dbo.RgxReplace(t4.modes,'^(\b(?:1|2)\b,?)+','',1),',')) AS link_value
+				(SELECT MAX(CAST(VALUE AS int)) FROM STRING_SPLIT(dbo.RgxExtract(t4.modes,'(,(?:1|2))+$',1),',')) AS link_value
 			FROM trip AS t4 WHERE EXISTS (SELECT 1 FROM STRING_SPLIT(t4.modes,',') WHERE VALUE IN(SELECT mode_id FROM automodes)) 
-								  AND NOT EXISTS (SELECT 1 FROM STRING_SPLIT(t4.modes,',') WHERE VALUE IN(SELECT mode_id FROM transitmodes)))
+								  AND NOT EXISTS (SELECT 1 FROM STRING_SPLIT(t4.modes,',') WHERE VALUE IN(SELECT mode_id FROM transitmodes))
+								  AND dbo.RgxReplace(t4.modes,'^(\b(?:1|2)\b,?)+','',1) IS NOT NULL),
+		cte_acc_egr2 AS (SELECT cte.personid, cte.tripnum, cte.trip_type,
+								MAX(CASE WHEN cte.label = 'A' THEN cte.link_value ELSE NULL END) AS mode_acc,
+								MAX(CASE WHEN cte.label = 'E' THEN cte.link_value ELSE NULL END) AS mode_egr
+			FROM cte_acc_egr1 AS cte GROUP BY cte.personid, cte.tripnum, cte.trip_type)
 		UPDATE t 
-			SET t.mode_acc = CASE 	WHEN cte_acc_egr.label = 'A' THEN cte_acc_egr.link_value ELSE NULL END,
-				t.mode_egr = CASE 	WHEN cte_acc_egr.label = 'E' THEN cte_acc_egr.link_value ELSE NULL END
-			FROM trip AS t JOIN cte_acc_egr ON t.personid = cte_acc_egr.personid AND t.tripnum = cte_acc_egr.tripnum WHERE cte_acc_egr.link_value IS NOT NULL;
+			SET t.mode_acc = cte_acc_egr2.mode_acc,
+				t.mode_egr = cte_acc_egr2.mode_egr
+			FROM trip AS t JOIN cte_acc_egr2 ON t.personid = cte_acc_egr2.personid AND t.tripnum = cte_acc_egr2.tripnum;
 
-		-- Remove access/egress modes from 1) transit and 2) auto trip strings--not only at the ends, but also the middle. [QC this & be careful!]
-	 	WITH cte_mode AS		
-		(	SELECT t5.personid, t5.tripnum, 'transit' AS trip_type,
-			(STUFF((SELECT ',' + CAST((Match) AS VARCHAR(MAX)) AS [text()] FROM dbo.RgxSplit(t5.modes,',',1) WHERE (Match) IN(SELECT mode_id FROM transitmodes)
-					FOR XML PATH('')), 1, 1, NULL)) AS mode_reduced
-			FROM trip AS t5 WHERE EXISTS (SELECT 1 FROM STRING_SPLIT(t5.modes,',') WHERE VALUE IN(SELECT mode_id FROM transitmodes))
-			UNION ALL
-			SELECT t6.personid, t6.tripnum, 'auto' AS trip_type,
-			(STUFF((SELECT ',' + CAST((Match) AS VARCHAR(MAX)) AS [text()] FROM dbo.RgxSplit(t6.modes,',',1) WHERE (Match) IN(SELECT mode_id FROM automodes)
-					FOR XML PATH('')), 1, 1, NULL)) AS mode_reduced
-			FROM trip AS t6 WHERE EXISTS (SELECT 1 FROM STRING_SPLIT(t6.modes,',') WHERE VALUE IN(SELECT mode_id FROM automodes)) 
-								  AND NOT EXISTS (SELECT 1 FROM STRING_SPLIT(t6.modes,',') WHERE VALUE IN(SELECT mode_id FROM transitmodes)))
-		UPDATE t 
-			SET t.modes	= cte_mode.mode_reduced
-			FROM trip AS t JOIN cte_mode ON t.personid = cte_mode.personid AND t.tripnum = cte_mode.tripnum WHERE cte_mode.mode_reduced IS NOT NULL;
-			
-		-- Populate the standard fields with the revised concatenated data 		
+		--handle the 'other' category left out of the operation above (it is the largest integer but secondary to listed modes)
+		UPDATE trip SET trip.mode_acc = 97 WHERE trip.mode_acc IS NULL AND dbo.RgxFind(trip.modes,'^97,\d+',1) = 1
+			AND EXISTS (SELECT 1 FROM STRING_SPLIT(trip.modes,',') WHERE VALUE IN(SELECT mode_id FROM automodes UNION select mode_id FROM transitmodes));
+		UPDATE trip SET trip.mode_egr = 97 WHERE trip.mode_egr IS NULL AND dbo.RgxFind(trip.modes,'\d+,97$',1) = 1
+			AND EXISTS (SELECT 1 FROM STRING_SPLIT(trip.modes,',') WHERE VALUE IN(SELECT mode_id FROM automodes UNION select mode_id FROM transitmodes));	
+
+		-- Populate separate mode fields, removing access/egress from the beginning and end of 1) transit and 2) auto trip strings
+			WITH cte AS 
+		(SELECT t.tripid, dbo.RgxReplace(dbo.RgxReplace(dbo.RgxReplace(t.modes,'\b(1|2|97)\b','',1),'(,(?:3|4|5|6|7|8|9|10|11|12|16|17|18|21|22|33|34|36|37|47))+$','',1),'^((?:3|4|5|6|7|8|9|10|11|12|16|17|18|21|22|33|34|36|37|47),)+','',1) AS mode_reduced
+			FROM trip as t
+			WHERE EXISTS (SELECT 1 FROM STRING_SPLIT(t.modes,',') WHERE VALUE IN(SELECT mode_id FROM transitmodes))
+		UNION ALL 	
+		SELECT t.tripid, dbo.RgxReplace(t.modes,'\b(1|2|97)\b','',1) AS mode_reduced
+			FROM trip as t
+			WHERE EXISTS (SELECT 1 FROM STRING_SPLIT(t.modes,',') WHERE VALUE IN(SELECT mode_id FROM automodes))
+			AND NOT EXISTS (SELECT 1 FROM STRING_SPLIT(t.modes,',') WHERE VALUE IN(SELECT mode_id FROM transitmodes)))
+		UPDATE t
+			SET t.mode_1 = (SELECT Match FROM dbo.RgxMatches(cte.mode_reduced,'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY),
+				t.mode_2 = (SELECT Match FROM dbo.RgxMatches(cte.mode_reduced,'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 1 ROWS FETCH NEXT 1 ROWS ONLY),
+				t.mode_3 = (SELECT Match FROM dbo.RgxMatches(cte.mode_reduced,'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 2 ROWS FETCH NEXT 1 ROWS ONLY),
+				t.mode_4 = (SELECT Match FROM dbo.RgxMatches(cte.mode_reduced,'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 3 ROWS FETCH NEXT 1 ROWS ONLY)
+		FROM trip AS t JOIN cte ON t.tripid = cte.tripid;
+
+		-- Populate transit_system and transit_line fields with the revised concatenated data 		
 		UPDATE 	t
-			SET t.mode_1			= (SELECT Match FROM dbo.RgxMatches(t.modes,			'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY),
-				t.mode_2			= (SELECT Match FROM dbo.RgxMatches(t.modes,			'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 1 ROWS FETCH NEXT 1 ROWS ONLY),
-				t.mode_3			= (SELECT Match FROM dbo.RgxMatches(t.modes,			'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 2 ROWS FETCH NEXT 1 ROWS ONLY),
-				t.mode_4			= (SELECT Match FROM dbo.RgxMatches(t.modes,			'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 3 ROWS FETCH NEXT 1 ROWS ONLY),
-				t.transit_system_1	= (SELECT Match FROM dbo.RgxMatches(t.transit_systems,	'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY),
+			SET t.transit_system_1	= (SELECT Match FROM dbo.RgxMatches(t.transit_systems,	'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY),
 				t.transit_system_2	= (SELECT Match FROM dbo.RgxMatches(t.transit_systems,	'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 1 ROWS FETCH NEXT 1 ROWS ONLY),
 				t.transit_system_3	= (SELECT Match FROM dbo.RgxMatches(t.transit_systems,	'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 2 ROWS FETCH NEXT 1 ROWS ONLY),
 				t.transit_system_4	= (SELECT Match FROM dbo.RgxMatches(t.transit_systems,	'-?\b\d+\b',1) ORDER BY MatchIndex OFFSET 3 ROWS FETCH NEXT 1 ROWS ONLY),
