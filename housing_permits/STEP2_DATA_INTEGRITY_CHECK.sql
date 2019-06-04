@@ -28,6 +28,7 @@ ALTER COLUMN DELETE_ NVARCHAR(500)
 ALTER TABLE Angela.STEP2_17_16
 ALTER COLUMN CHECK_ NVARCHAR(500)
 
+
 -- 1：CREATE A UNIQUE ID FOR EVERY RECORD
 -- so we can easily call records 
 
@@ -49,7 +50,7 @@ ALTER TABLE Angela.STEP2_17_16
 UPDATE Angela.STEP2_17_16
 SET CHECK_ = 'TYPE1_OLD'
 WHERE AY_ID IN 
-(SELECT count(*)
+(SELECT a.AY_ID
 FROM Angela.STEP2_17_16 a 
 INNER JOIN Angela.STEP2_17_16 b ON a.JURIS = b.JURIS17 AND a.ISSUED = b.ISSUED AND a.UNITS = b.UNITS AND a.HOUSENO = b.HOUSENO AND a.STRNAME = b.STRNAME
 WHERE a.FINALED is null 
@@ -57,6 +58,7 @@ WHERE a.FINALED is null
         AND a.PROJYEAR != 2017
         AND b.PROJYEAR = 2017
 )
+
 -- mark new record which has exactly same information as old ones
 UPDATE Angela.STEP2_17_16
 SET CHECK_ = 'TYPE1_NEW'
@@ -78,7 +80,7 @@ SELECT a.AY_ID, b.AY_ID, a.STRNAME, b.STRNAME, a.TYPE, b.TYPE
 FROM Angela.STEP2_17_16 a 
 INNER JOIN Angela.STEP2_17_16 b ON a.JURIS = b.JURIS17 AND a.ISSUED = b.ISSUED AND a.UNITS = b.UNITS AND a.HOUSENO = b.HOUSENO AND a.STRNAME != b.STRNAME
 AND a.FINALED is null -- could use where at here too
-        AND b.FINALED is not null 
+        AND b.FINALED is not null -- FINALIED 
         AND a.PROJYEAR != 2017
         AND b.PROJYEAR = 2017
 
@@ -90,7 +92,7 @@ WITH t AS
 FROM Angela.STEP2_17_16 a 
 INNER JOIN Angela.STEP2_17_16 b ON a.JURIS = b.JURIS17 AND a.ISSUED = b.ISSUED AND a.UNITS = b.UNITS AND a.HOUSENO = b.HOUSENO AND a.STRNAME != b.STRNAME
 WHERE a.FINALED is null 
-        AND b.FINALED is not null 
+        AND b.FINALED is not null -- FINALIED 
         AND a.PROJYEAR != 2017
         AND b.PROJYEAR = 2017) 
 UPDATE Angela.STEP2_17_16
@@ -105,7 +107,7 @@ WITH t AS
 FROM Angela.STEP2_17_16 a 
 INNER JOIN Angela.STEP2_17_16 b ON a.JURIS = b.JURIS17 AND a.ISSUED = b.ISSUED AND a.UNITS = b.UNITS AND a.HOUSENO = b.HOUSENO AND a.STRNAME != b.STRNAME
 WHERE a.FINALED is null 
-        AND b.FINALED is not null 
+        AND b.FINALED is not null -- FINALIED 
         AND a.PROJYEAR != 2017
         AND b.PROJYEAR = 2017) 
 UPDATE Angela.STEP2_17_16
@@ -121,7 +123,7 @@ WITH t AS -- everytime you have to redefine the t for the new clause
 FROM Angela.STEP2_17_16 a 
 INNER JOIN Angela.STEP2_17_16 b ON a.JURIS = b.JURIS17 AND a.ISSUED = b.ISSUED AND a.UNITS = b.UNITS AND a.HOUSENO = b.HOUSENO AND a.STRNAME != b.STRNAME
 WHERE a.FINALED is null 
-        AND b.FINALED is not null 
+        AND b.FINALED is not null -- FINALIZED
         AND a.PROJYEAR != 2017
         AND b.PROJYEAR = 2017) 
 UPDATE Angela.STEP2_17_16
@@ -136,7 +138,7 @@ WITH t AS -- everytime you have to redefine the t for the new clause
 FROM Angela.STEP2_17_16 a 
 INNER JOIN Angela.STEP2_17_16 b ON a.JURIS = b.JURIS17 AND a.ISSUED = b.ISSUED AND a.UNITS = b.UNITS AND a.HOUSENO = b.HOUSENO AND a.STRNAME != b.STRNAME
 WHERE a.FINALED is null 
-        AND b.FINALED is not null 
+        AND b.FINALED is not null -- FINALIED 
         AND a.PROJYEAR != 2017
         AND b.PROJYEAR = 2017) 
 UPDATE Angela.STEP2_17_16
