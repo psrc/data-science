@@ -1,16 +1,34 @@
+# This script will read-in a vintage of OFM SAEP estimates from ofm_saep.rds and reformat it to write to Elmer.
+# The most current vintage will be written to Sandbox as Christy.tblOfmSaep and include intercensal data since 2000 based on 2010 geographies  
+
 library(data.table)
 library(openxlsx)
 library(tidyverse)
 library(odbc)
+library(DBI)
 
 dir <- "J:/OtherData/OFM/SAEP"
-sub.dir <- "SAEP Extract_2018_11November02" # latest ofm delivery GEOID = GEOID10
+sub.dir <- "SAEP Extract_2019-10-15" # latest ofm delivery GEOID = GEOID10
+outdt.name <- "tblOfmSaep"
+# sub.dir <- "SAEP Extract_2018_11November02" # Vintage 
+# outdt.name <- "tblOfmSaepVintage2018"
+# sub.dir <- "SAEP Extract_2017_10October03" # Vintage
+# outdt.name <- "tblOfmSaepVintage2017"
 
+db.connect <- function(adatabase){
+  elmer_connection <- dbConnect(odbc(),
+                                driver = "SQL Server",
+                                server = "AWS-PROD-SQL\\COHO",
+                                database = adatabase,
+                                trusted_connection = "yes")
+}
 
-# Initial data -------------------------------------------------------------
+read.dt <- function(dbconnect, atable) {
+  dtelm <- dbReadTable(dbconnect, SQL(atable))
+  setDT(dtelm)
+}
 
-
-compile.all.ofm <- function(dir, sub.dir) {
+compile.ofmfile <- function(dir, sub.dir) {
   filename <- "ofm_saep.rds" 
   oraw <- readRDS(file.path(dir, sub.dir, filename)) %>% as.data.table
   cols <- c("COUNTYFP10", "GEOID10")
@@ -37,17 +55,24 @@ compile.all.ofm <- function(dir, sub.dir) {
   return(ofm)
 }
 
-dt <- compile.all.ofm(dir, sub.dir)
+compile.inter.and.post.censal <- function(){
+  # this function assumes the ofm_saep.rds process contains only years since 2010 
+  dt <- compile.ofmfile(dir, sub.dir)
+  working.dbtable <- "Christy.tblOfmSaep"
+  elmer_connection <- db.connect("Sandbox")
+  dtelm <- read.dt(elmer_connection, working.dbtable)
+  dtinter <- dtelm[Year < 2010]
+  dtall <- rbindlist(list(dtinter, dt))
+  # qc <- dtall[, lapply(.SD, sum), .SDcols = c('Estimate'), by = c('Year', 'AttributeDesc')]
+  dbWriteTable(elmer_connection, outdt.name, as.data.frame(dtall), overwrite = TRUE)
+}
 
+compile.as.is <- function(){
+  # this function assumes the ofm_saep.rds process contains all years since 2000 
+  dt <- compile.ofmfile(dir, sub.dir)
+  elmer_connection <- db.connect("Sandbox")
+  dbWriteTable(elmer_connection, outdt.name, as.data.frame(dt), overwrite = TRUE) # export latest and greatest
+}
 
-# Connection --------------------------------------------------------------
-
-elmer_connection <- dbConnect(odbc(),
-                              driver = "SQL Server",
-                              server = "AWS-PROD-SQL\\COHO",
-                              database = "Sandbox",
-                              trusted_connection = "yes")
-
-dbWriteTable(elmer_connection, "tblOfmSaep", as.data.frame(dt), overwrite = TRUE)
-
+compile.inter.and.post.censal()
 dbDisconnect(elmer_connection)
