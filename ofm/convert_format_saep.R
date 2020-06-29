@@ -87,7 +87,9 @@ qc.rds <- function(years) {
 }
 
 
-convert.file(filename, inputfileformat = "xlsx", outputfileformat = "rds")
+# convert.file(filename, inputfileformat = "xlsx", outputfileformat = "rds")
+convert.file(filename, inputfileformat = "xlsx", outputfileformat = "dbf")
+test <- read.dbf(file.path(base.dir, dir, 'ofm_saep.dbf'))
 
 # QC ----------------------------------------------------------------------
 
