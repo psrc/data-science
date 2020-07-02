@@ -1,4 +1,4 @@
-#The codebook is checked in with these code files, named Combined_Codebook_022020.xlsx
+# You will probably need to install a few libraries to get this to work.
 library(data.table)
 library(tidyverse)
 library(DT)
@@ -14,13 +14,25 @@ library(ggstance)
 library(sjPlot)
 library(effects)
 
-# loading data
-displ_index_data<- 'C:/Users/SChildress/Documents/HHSurvey/displace_estimate/displacement_risk_estimation.csv'
-parcel_data<- 'C:/Users/SChildress/Documents/HHSurvey/displace_estimate/buffered_parcels.dat'
-  
 
-## Read person-displacement data from Elmer
+#The codebook is checked in with these code files, named Combined_Codebook_022020.xlsx
 
+
+################# Input Data File Reading
+# This file contains information by Census Tract such as percent of households
+# in poverty, coming from the displacement risk analysis work: https://www.psrc.org/displacement-risk-mapping
+# it is checked in on github. You will need to point this variable to where it is
+# on your computer.
+displ_index_data<- 'C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/displacement_risk_estimation.csv'
+
+# This commented out file contains very detailed information about parcels.  For example,
+# it contains information for each parcel about the number of jobs within a half mile.
+# It is nearly 1 GB. You may wish to move this file locally for speed reasons.
+#parcel_data<- 'J:/Projects/Surveys/HHTravel/Survey2019/Data/displacement_estimation/buffered_parcels.dat'
+# I've moved my locally, as you can see:
+parcel_data <- 'C:/Users/SChildress/Documents/HHSurvey/displace_estimate/buffered_parcels.dat'
+
+## Read person-displacement data from Elmer, other travel survey data as well
 db.connect <- function() {
   elmer_connection <- dbConnect(odbc(),
                                 driver = "SQL Server",
@@ -47,29 +59,17 @@ person_dt<-read.dt(dbtable.person.query, 'tablename')
 displ_risk_df <- read.csv(displ_index_data)
 parcel_df<-read.table(parcel_data, header=TRUE, sep='')
 
+person_dt<-data.table(person_dt)
+
 #Identifying displaced households
 res_factors<-c("prev_res_factors_forced", "prev_res_factors_housing_cost","prev_res_factors_income_change",
                "prev_res_factors_community_change", "prev_home_wa")
 
 missing_codes <- c('Missing: Technical Error', 'Missing: Non-response', 
                    'Missing: Skip logic', 'Children or missing')
-#first calculate age and race variables across household members
 
-# so group people by household
-
-# calculate if they have any people of color, people over 65
-
-person_dt<-data.table(person_dt)
-person_dt[,('hh_all_people_of_color'):= lapply(.SD, function(x) ifelse(all(.SD!='White Only'), 'hh_all_people_of_color', 'hh_not_all_people_of_color')), .SDcols='race_category', by=hhid]
-person_dt[,('hh_any_older'):= lapply(.SD, function(x) ifelse(any(.SD!='65 years+'), 'hh_any_65p', 'hh_not_all_65p')), .SDcols='age_category', by=hhid]
-person_dt[,('hh_has_children'):= lapply(.SD, function(x) ifelse(any(.SD=='Under 18 years'), 'hh_has_children', 'hh_no_children')), .SDcols='age_category', by=hhid]
 
 person_dt<-drop_na(person_dt, res_factors)
-#expanded[, ("in") := (share*(1-share))/hhid][, MOE := z*sqrt(get("in"))][, N_HH := hhid]
-#table[, lapply(.SD, sum), .SDcols = wt_field, by = cols]
-
-#dt[, lapply(.SD, function(x) x[nzchar(x)][1]), by = VisitID, .SDcols = 3:5]
-
 
 # remove missing data
 for(factor in res_factors){
@@ -78,9 +78,10 @@ for(factor in res_factors){
   }
 }
 
-person_df <- setDF(person_dt)
 
 person_df$displaced = 0
+
+# defining the displacement variable
 for (factor in res_factors){
   dummy_name<- paste(factor, ' dummy')
   print(dummy_name)
@@ -92,23 +93,31 @@ for (factor in res_factors){
 #prev_home_taz_2010
 person_df$census_2010_tract <- as.character(person_df$census_2010_tract)
 person_df_dis <- merge(person_df,displ_risk_df, by.x='census_2010_tract', by.y='GEOID', all.x=TRUE)
+# a list of parcel -based variables I'd like to try in the model, there are more on the file
 parcel_based_vars<-c('hh_2', 'stugrd_2', 'stuhgh_2', 'stuuni_2', 'empedu_2', 'empfoo_2', 'empgov_2', 'empind_2',
-                     'empmed_2', 'empofc_2', 'empret_2', 'empsvc_2', 'emptot_2', 'ppricdy2', 'pprichr2',
+                      'empmed_2', 'empofc_2', 'empret_2', 'empsvc_2', 'emptot_2', 'ppricdy2', 'pprichr2',
                      'tstops_2', 'nparks_2', 'aparks_2', 'dist_lbus', 'dist_ebus', 'dist_crt', 'dist_fry',
-                     'dist_lrt', 'dist_park.y')
-parcel_df<-parcel_df[parcel_based_vars]
+                      'dist_lrt')
+
 person_df_dis$census_2010_tract <- as.character(person_df$census_2010_tract)
 
 person_df_dis$parcel_id <- as.character(person_df_dis$parcel_id)
 parcel_df$parcelid <- as.character(parcel_df$parcelid)
-
-person_df_dis_parcel<- merge(person_df_dis, parcel_df, by.x='parcel_id', by.y='parcelid')
-
-#free up space because the parcel file is huge
+ person_df_dis_parcel<- merge(person_df_dis, parcel_df, by.x='parcel_id', by.y='parcelid')
+ 
+# #free up space because the parcel file is huge
 rm(parcel_df)
-
+# 
 person_df_dis_parcel[parcel_based_vars] <- lapply(person_df_dis_parcel[parcel_based_vars], function(x) log(1+x))
 
+#first calculate age and race variables across household members
+# so group people by household
+# calculate if they have any people of color, people over 65
+person_dt[,('hh_all_people_of_color'):= lapply(.SD, function(x) ifelse(all(.SD!='White Only'), 'hh_all_people_of_color', 'hh_not_all_people_of_color')), .SDcols='race_category', by=hhid]
+person_dt[,('hh_any_older'):= lapply(.SD, function(x) ifelse(any(.SD!='65 years+'), 'hh_any_65p', 'hh_not_all_65p')), .SDcols='age_category', by=hhid]
+person_dt[,('hh_has_children'):= lapply(.SD, function(x) ifelse(any(.SD=='Under 18 years'), 'hh_has_children', 'hh_no_children')), .SDcols='age_category', by=hhid]
+
+person_df <- setDF(person_dt)
 
 # There are over a hundred variables on the dataframe- just limit it to potential variables
 vars_to_consider <- c('displaced', 'hh_all_people_of_color', 'hh_any_older', 'hh_has_children',"nonwhite","poor_english","no_bachelors","rent","cost_burdened", 
@@ -123,12 +132,16 @@ vars_to_consider <- c('displaced', 'hh_all_people_of_color', 'hh_any_older', 'hh
                       'hh_2', 'stugrd_2', 'stuhgh_2', 'stuuni_2', 'empedu_2', 'empfoo_2', 'empgov_2', 'empind_2',
                       'empmed_2', 'empofc_2', 'empret_2', 'empsvc_2', 'emptot_2', 'ppricdy2', 'pprichr2',
                       'tstops_2', 'nparks_2', 'aparks_2', 'dist_lbus', 'dist_ebus', 'dist_crt', 'dist_fry',
-                      'dist_lrt', 'dist_park.y')
+                      'dist_lrt')
 
 
 person_df_dis_sm <-person_df_dis_parcel[vars_to_consider]
 
-# variable aggregations 
+################# variable aggregations and transformations
+
+
+
+
 person_df_dis_sm$college<- with(person_df_dis_sm,ifelse(education %in% c('Bachelor degree',
                                                                          'Graduate/post-graduate degree'), 'college', 'no_college'))
 person_df_dis_sm$vehicle_group= 
@@ -171,10 +184,9 @@ person_df_dis_sm$hhincome_mrbroad[person_df_dis_sm$hhincome_broad== 'Prefer not 
 person_df_dis_sm$dist_prem_bus<-pmin(person_df_dis_sm$dist_ebus, person_df_dis_sm$dist_fry, person_df_dis_sm$dist_lrt)
 person_df_dis_sm$dist_bus<-pmin(person_df_dis_sm$dist_lbus,person_df_dis_sm$dist_ebus, person_df_dis_sm$dist_fry, person_df_dis_sm$dist_lrt)
 
-person_df_dis_sm[sapply(person_df_dis_sm, is.character)] <- lapply(person_df_dis_sm[sapply(person_df_dis_sm, is.character)], 
+person_df_dis_sm[sapply(person_df_dis_sm, is.character)] <- lapply(person_df_dis_sm[sapply(person_df_dis_sm, is.character)], as.factor)
 
-                                                                      
-                                                                                                       as.factor)
+# Variables to Try in the Model Fitting Below
 less_vars<-c('displaced', "hhincome_mrbroad", 'hh_all_people_of_color', 
             'rent_or_not',
              'vehicle_group', 'size_group',
@@ -206,7 +218,7 @@ plot_model(displ_logit, transform = NULL, show.values = TRUE, axis.labels = '', 
 
 plot(predictorEffects(displ_logit))
 
-# Trying the bma library
+# Trying the bma library, Hana recommended it, but I'm confused about how to use it.
 # x<-person_df_ls[, !names(person_df_ls) %in% c('displaced')]
 # y<-person_df_ls$displaced
 # 
