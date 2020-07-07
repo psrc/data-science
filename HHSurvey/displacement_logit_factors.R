@@ -19,8 +19,8 @@ library(effects)
 
 
 ################# Input Data File Reading
-# This file contains information by Census Tract such as percent of households
-# in poverty, coming from the displacement risk analysis work: https://www.psrc.org/displacement-risk-mapping
+# This file contains information by Census Tract such as percent of households https://www.psrc.org/displacement-risk-mapping
+# in poverty, coming from the displacement risk analysis work.
 # it is checked in on github. You will need to point this variable to where it is
 # on your computer.
 displ_index_data<- 'C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/displacement_risk_estimation.csv'
@@ -59,11 +59,14 @@ person_dt<-read.dt(dbtable.person.query, 'tablename')
 displ_risk_df <- read.csv(displ_index_data)
 parcel_df<-read.table(parcel_data, header=TRUE, sep='')
 
-person_dt<-data.table(person_dt)
+#person_dt<-data.table(person_dt)
 
-#Identifying displaced households
-res_factors<-c("prev_res_factors_forced", "prev_res_factors_housing_cost","prev_res_factors_income_change",
-               "prev_res_factors_community_change", "prev_home_wa")
+#first calculate age and race variables across household members
+# so group people by household
+# calculate if they have any people of color, people over 65
+person_dt[,('hh_all_people_of_color'):= lapply(.SD, function(x) ifelse(all(.SD!='White Only'), 'hh_all_people_of_color', 'hh_not_all_people_of_color')), .SDcols='race_category', by=hhid]
+person_dt[,('hh_any_older'):= lapply(.SD, function(x) ifelse(any(.SD!='65 years+'), 'hh_any_65p', 'hh_not_all_65p')), .SDcols='age_category', by=hhid]
+person_dt[,('hh_has_children'):= lapply(.SD, function(x) ifelse(any(.SD=='Under 18 years'), 'hh_has_children', 'hh_no_children')), .SDcols='age_category', by=hhid]
 
 missing_codes <- c('Missing: Technical Error', 'Missing: Non-response', 
                    'Missing: Skip logic', 'Children or missing')
@@ -77,6 +80,15 @@ for(factor in res_factors){
     person_dt<- subset(person_dt, get(res_factors) != missing)
   }
 }
+
+# switch over to using df syntax for simplicity
+person_df <- setDF(person_dt)
+
+#Identifying displaced households
+res_factors<-c("prev_res_factors_forced", "prev_res_factors_housing_cost","prev_res_factors_income_change",
+               "prev_res_factors_community_change", "prev_home_wa")
+
+
 
 
 person_df$displaced = 0
@@ -103,21 +115,14 @@ person_df_dis$census_2010_tract <- as.character(person_df$census_2010_tract)
 
 person_df_dis$parcel_id <- as.character(person_df_dis$parcel_id)
 parcel_df$parcelid <- as.character(parcel_df$parcelid)
- person_df_dis_parcel<- merge(person_df_dis, parcel_df, by.x='parcel_id', by.y='parcelid')
+person_df_dis_parcel<- merge(person_df_dis, parcel_df, by.x='parcel_id', by.y='parcelid')
  
 # #free up space because the parcel file is huge
 rm(parcel_df)
 # 
 person_df_dis_parcel[parcel_based_vars] <- lapply(person_df_dis_parcel[parcel_based_vars], function(x) log(1+x))
 
-#first calculate age and race variables across household members
-# so group people by household
-# calculate if they have any people of color, people over 65
-person_dt[,('hh_all_people_of_color'):= lapply(.SD, function(x) ifelse(all(.SD!='White Only'), 'hh_all_people_of_color', 'hh_not_all_people_of_color')), .SDcols='race_category', by=hhid]
-person_dt[,('hh_any_older'):= lapply(.SD, function(x) ifelse(any(.SD!='65 years+'), 'hh_any_65p', 'hh_not_all_65p')), .SDcols='age_category', by=hhid]
-person_dt[,('hh_has_children'):= lapply(.SD, function(x) ifelse(any(.SD=='Under 18 years'), 'hh_has_children', 'hh_no_children')), .SDcols='age_category', by=hhid]
 
-person_df <- setDF(person_dt)
 
 # There are over a hundred variables on the dataframe- just limit it to potential variables
 vars_to_consider <- c('displaced', 'hh_all_people_of_color', 'hh_any_older', 'hh_has_children',"nonwhite","poor_english","no_bachelors","rent","cost_burdened", 
@@ -210,13 +215,13 @@ plot_summs(displ_logit, scale = TRUE)
 
 #https://towardsdatascience.com/visualizing-models-101-using-r-c7c937fc5f04
 
-plot_model(displ_logit, transform = NULL, show.values = TRUE, axis.labels = '', value.offset = .4)
+#plot_model(displ_logit, transform = NULL, show.values = TRUE, axis.labels = '', value.offset = .4)
 #effect_plot(plot(allEffects(displ_logit))displ_logit, pred = poor_english, interval = TRUE, plot.points = TRUE)
 #looks nonlinear a bit
 
 #effect_plot(displ_logit, pred = white, interval = TRUE, plot.points = TRUE)
 
-plot(predictorEffects(displ_logit))
+#plot(predictorEffects(displ_logit))
 
 # Trying the bma library, Hana recommended it, but I'm confused about how to use it.
 # x<-person_df_ls[, !names(person_df_ls) %in% c('displaced')]
