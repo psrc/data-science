@@ -23,14 +23,14 @@ library(effects)
 # in poverty, coming from the displacement risk analysis work.
 # it is checked in on github. You will need to point this variable to where it is
 # on your computer.
-displ_index_data<- 'C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/displacement_risk_estimation.csv'
+displ_index_data<- 'C:/Users/pbutrina/Documents/GitHub/data-science/HHSurvey/displacement_risk_estimation.csv'
 
 # This commented out file contains very detailed information about parcels.  For example,
 # it contains information for each parcel about the number of jobs within a half mile.
 # It is nearly 1 GB. You may wish to move this file locally for speed reasons.
-#parcel_data<- 'J:/Projects/Surveys/HHTravel/Survey2019/Data/displacement_estimation/buffered_parcels.dat'
+parcel_data<- 'J:/Projects/Surveys/HHTravel/Survey2019/Data/displacement_estimation/buffered_parcels.dat'
 # I've moved my locally, as you can see:
-parcel_data <- 'C:/Users/SChildress/Documents/HHSurvey/displace_estimate/buffered_parcels.dat'
+#parcel_data <- 'C:/Users/SChildress/Documents/HHSurvey/displace_estimate/buffered_parcels.dat'
 
 ## Read person-displacement data from Elmer, other travel survey data as well
 db.connect <- function() {
@@ -86,7 +86,7 @@ person_df <- setDF(person_dt)
 
 #Identifying displaced households
 res_factors<-c("prev_res_factors_forced", "prev_res_factors_housing_cost","prev_res_factors_income_change",
-               "prev_res_factors_community_change", "prev_home_wa")
+               "prev_res_factors_community_change")
 
 
 
@@ -150,12 +150,12 @@ person_df_dis_sm <-person_df_dis_parcel[vars_to_consider]
 person_df_dis_sm$college<- with(person_df_dis_sm,ifelse(education %in% c('Bachelor degree',
                                                                          'Graduate/post-graduate degree'), 'college', 'no_college'))
 person_df_dis_sm$vehicle_group= 
-with(person_df_dis_sm,ifelse(vehicle_count > numadults, 'careq_gr_adults', 'cars_less_adults'))
+with(person_df_dis_sm,ifelse(vehicle_count > numadults, 'careq_gr_adults', 'cars_less_adults')) 
 person_df_dis_sm$rent_or_not= 
   with(person_df_dis_sm,ifelse(prev_rent_own == 'Rent', 'Rent', 'Not Rent'))
 
 person_df_dis_sm$seattle= 
-  with(person_df_dis_sm,ifelse(city_name=='Seattle', 'Seattle', 'Not Seattle'))
+  with(person_df_dis_sm,ifelse(city_name=='Seattle', 'Seattle', 'Not Seattle')) 
 
 person_df_dis_sm$rgc= 
   with(person_df_dis_sm,ifelse(growth_center_name!='', 'rgc', 'not_rgc'))
@@ -164,7 +164,7 @@ person_df_dis_sm$rgc=
 person_df_dis_sm$sf_house<-with(person_df_dis_sm,ifelse(prev_res_type == 'Single-family house (detached house)', 'Single Family House', 'Not Single Family House'))
 
 person_df_dis_sm$has_children= 
-  with(person_df_dis_sm,ifelse(numchildren>1, 'children', 'no children'))
+  with(person_df_dis_sm,ifelse(numchildren>=1, 'children', 'no children')) 
 
 person_df_dis_sm$wrker_group= 
          with(person_df_dis_sm,ifelse(numworkers==0, 'no workers', 'are workers'))
