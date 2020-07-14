@@ -23,12 +23,12 @@ library(effects)
 # in poverty, coming from the displacement risk analysis work.
 # it is checked in on github. You will need to point this variable to where it is
 # on your computer.
-displ_index_data<- 'C:/Users/pbutrina/Documents/GitHub/data-science/HHSurvey/displacement_risk_estimation.csv'
+displ_index_data<- 'C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/displacement_risk_estimation.csv'
 
 # This commented out file contains very detailed information about parcels.  For example,
 # it contains information for each parcel about the number of jobs within a half mile.
 # It is nearly 1 GB. You may wish to move this file locally for speed reasons.
-parcel_data<- 'J:/Projects/Surveys/HHTravel/Survey2019/Data/displacement_estimation/buffered_parcels.dat'
+parcel_data<- 'C:/Users/SChildress/Documents/HHSurvey/displace_estimate/buffered_parcels.dat'
 # I've moved my locally, as you can see:
 #parcel_data <- 'C:/Users/SChildress/Documents/HHSurvey/displace_estimate/buffered_parcels.dat'
 
@@ -71,8 +71,9 @@ person_dt[,('hh_has_children'):= lapply(.SD, function(x) ifelse(any(.SD=='Under 
 missing_codes <- c('Missing: Technical Error', 'Missing: Non-response', 
                    'Missing: Skip logic', 'Children or missing')
 
-
-person_dt<-drop_na(person_dt, res_factors)
+#Identifying displaced households
+res_factors<-c("prev_res_factors_forced", "prev_res_factors_housing_cost","prev_res_factors_income_change",
+               "prev_res_factors_community_change")
 
 # remove missing data
 for(factor in res_factors){
@@ -81,17 +82,12 @@ for(factor in res_factors){
   }
 }
 
+person_dt<-drop_na(person_dt, res_factors)
+
+person_dt$displaced = 0
+
 # switch over to using df syntax for simplicity
 person_df <- setDF(person_dt)
-
-#Identifying displaced households
-res_factors<-c("prev_res_factors_forced", "prev_res_factors_housing_cost","prev_res_factors_income_change",
-               "prev_res_factors_community_change")
-
-
-
-
-person_df$displaced = 0
 
 # defining the displacement variable
 for (factor in res_factors){
@@ -100,6 +96,10 @@ for (factor in res_factors){
   person_df[person_df[factor]=='Selected', 'displaced']<-1
   
 }
+
+
+
+
 
 # Joining the person data to census tract and parcel-based land use data
 #prev_home_taz_2010
