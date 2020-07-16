@@ -73,7 +73,7 @@ person_lt <- person_dt %>%
          age,
          age_category,
          starts_with("race_")
-  ) %>% 
+  ) #%>% 
   mutate(age_cat_narrow = case_when(
     age %in% c("Under 5 years old", "5-11 years", "12-15 years", "16-17 years")
     ~ "Persons under 18",
