@@ -67,78 +67,6 @@ parcel_df<-read.table(parcel_data, header=TRUE, sep='')
 # calculate if they have any people of color, people over 65
 # Create a person table narrowed to age and race fields
 
-person_lt <- person_dt %>% 
-  select(household_id,
-         person_id,
-         age,
-         age_category,
-         starts_with("race_")
-  ) #%>% 
-  mutate(age_cat_narrow = case_when(
-    age %in% c("Under 5 years old", "5-11 years", "12-15 years", "16-17 years")
-    ~ "Persons under 18",
-    age %in% c("18-24 years", "25-34 years")
-    ~ "Persons 18-34 years",
-    age %in% c("35-44 years", "45-54 years", "55-64 years")
-    ~ "Persons 35-64 years",
-    age %in% c("65-74 years", "75-84 years", "85 or years older")
-    ~ "Persons 65+"
-  ),
-  race_cat_broad = case_when(
-    race_category == "White Only"
-    ~ "White",
-    race_category == "African-American, Hispanic, Multiracial, and Other"
-    ~ "POC",
-    race_category == "Asian Only" ~ "Asian",
-    race_category == "Children or missing" & age_cat_narrow == "Persons under 18"
-    ~ "Children",
-    race_category == "Children or missing" & age_cat_narrow != "Persons under 18"
-    ~ "Missing"
-  )) %>% 
-  group_by(household_id) %>% 
-  mutate(hh_age = case_when(
-    any(age_cat_narrow == "Persons under 18")
-    ~ "Household with children",
-    any(age_cat_narrow == "Persons 65+")
-    ~ "Household age 65+",
-    any(age_cat_narrow == "Persons 35-64 years")
-    ~ "Household age 35-64",
-    TRUE ~ "Household excl. age 18-34"
-  ),
-  hh_race_sep = case_when(
-    all(race_cat_broad == "POC") | all(race_cat_broad %in% c("POC", "Children"))
-    ~ "POC Only",
-    all(race_cat_broad == "Asian") | all(race_cat_broad %in% c("Asian", "Children"))
-    ~ "Asian Only",
-    any(race_cat_broad == "White") & any(race_cat_broad == "Asian")
-    ~ "Asian & White",
-    any(race_cat_broad == "White") & any(race_cat_broad == "POC")
-    ~ "POC & White",
-    any(race_cat_broad == "Asian") & any(race_cat_broad == "POC")
-    ~ "Asian & POC",
-    all(race_cat_broad == "White") | all(race_cat_broad %in% c("White", "Children"))
-    ~ "White Only",
-    any(race_cat_broad == "Missing")
-    ~ "Missing" 
-  ),
-  hh_race = case_when(
-    all(race_cat_broad == "POC") | all(race_cat_broad %in% c("POC", "Children"))
-    ~ "Non-Asian POC",
-    all(race_cat_broad == "Asian") | all(race_cat_broad %in% c("Asian", "Children"))
-    ~ "Asian",
-    any(race_cat_broad == "White") & any(race_cat_broad == "Asian")
-    ~ "Asian",
-    any(race_cat_broad == "White") & any(race_cat_broad == "POC")
-    ~ "Non-Asian POC",
-    any(race_cat_broad == "Asian") & any(race_cat_broad == "POC")
-    ~ "Other",
-    all(race_cat_broad == "White") | all(race_cat_broad %in% c("White", "Children"))
-    ~ "White",
-    any(race_cat_broad == "Missing")
-    ~ "Other"
-  )) %>% 
-  ungroup()
-
 
 person_dt[,('hh_any_older'):= lapply(.SD, function(x) ifelse(any(.SD!='65 years+'), 'hh_any_65p', 'hh_not_all_65p')), .SDcols='age_category', by=hhid]
 person_dt[,('hh_has_children'):= lapply(.SD, function(x) ifelse(any(.SD=='Under 18 years'), 'hh_has_children', 'hh_no_children')), .SDcols='age_category', by=hhid]
@@ -188,10 +116,20 @@ parcel_based_vars<-c('hh_2', 'stugrd_2', 'stuhgh_2', 'stuuni_2', 'empedu_2', 'em
 
 person_df_dis$census_2010_tract <- as.character(person_df$census_2010_tract)
 
-person_df_dis$parcel_id <- as.character(person_df_dis$parcel_id)
+#changed to prev parcel 2018
+
+person_df_dis$parcel_id <- as.character(person_df_dis$prev_home_2018_parcel)
 parcel_df$parcelid <- as.character(parcel_df$parcelid)
-person_df_dis_parcel<- merge(person_df_dis, parcel_df, by.x='parcel_id', by.y='parcelid')
- 
+#merging by the previous residence parcel from the person table and by the parcel id in the parcel table
+person_df_dis_parcel<- merge(person_df_dis, parcel_df, by.x='prev_home_2018_parcel', by.y='parcelid', all.x = TRUE)
+
+
+#add updated hh race and age variables
+hh_race_age_cat = read.csv("C:/Users/pbutrina/Documents/GitHub/data-science/HHSurvey/hh_race_age_categ.csv")
+person_df_dis_parcel$hhid <- as.character(person_df_dis_parcel$hhid)
+hh_race_age_cat$household_id <- as.character(hh_race_age_cat$household_id)
+person_df_dis_parcel<- merge(person_df_dis_parcel, hh_race_age_cat, by.x='hhid', by.y='household_id', all.x = TRUE)
+
 # #free up space because the parcel file is huge
 rm(parcel_df)
 # 
@@ -200,7 +138,7 @@ person_df_dis_parcel[parcel_based_vars] <- lapply(person_df_dis_parcel[parcel_ba
 
 
 # There are over a hundred variables on the dataframe- just limit it to potential variables
-vars_to_consider <- c('displaced', 'hh_all_people_of_color', 'hh_any_older', 'hh_has_children',"nonwhite","poor_english","no_bachelors","rent","cost_burdened", 
+vars_to_consider <- c('displaced','hh_any_older', 'hh_has_children',"nonwhite","poor_english","no_bachelors","rent","cost_burdened", 
                       "severe_cost_burdened","poverty_200"	,
                       "ln_jobs_auto_30", "ln_jobs_transit_45", "transit_qt_mile","transit_2025_half",
                        "dist_super", "dist_pharm", "dist_rest","dist_park.x",	"dist_school",
@@ -212,10 +150,12 @@ vars_to_consider <- c('displaced', 'hh_all_people_of_color', 'hh_any_older', 'hh
                       'hh_2', 'stugrd_2', 'stuhgh_2', 'stuuni_2', 'empedu_2', 'empfoo_2', 'empgov_2', 'empind_2',
                       'empmed_2', 'empofc_2', 'empret_2', 'empsvc_2', 'emptot_2', 'ppricdy2', 'pprichr2',
                       'tstops_2', 'nparks_2', 'aparks_2', 'dist_lbus', 'dist_ebus', 'dist_crt', 'dist_fry',
-                      'dist_lrt')
+                      'dist_lrt','hh_race', 'hh_age')
+
 
 
 person_df_dis_sm <-person_df_dis_parcel[vars_to_consider]
+
 
 ################# variable aggregations and transformations
 
@@ -226,6 +166,7 @@ person_df_dis_sm$college<- with(person_df_dis_sm,ifelse(education %in% c('Bachel
                                                                          'Graduate/post-graduate degree'), 'college', 'no_college'))
 person_df_dis_sm$vehicle_group= 
 with(person_df_dis_sm,ifelse(vehicle_count > numadults, 'careq_gr_adults', 'cars_less_adults')) 
+
 person_df_dis_sm$rent_or_not= 
   with(person_df_dis_sm,ifelse(prev_rent_own == 'Rent', 'Rent', 'Not Rent'))
 
@@ -266,12 +207,28 @@ person_df_dis_sm$dist_bus<-pmin(person_df_dis_sm$dist_lbus,person_df_dis_sm$dist
 
 person_df_dis_sm[sapply(person_df_dis_sm, is.character)] <- lapply(person_df_dis_sm[sapply(person_df_dis_sm, is.character)], as.factor)
 
+#new race category based on hh_race
+person_df_dis_sm$hh_race_upd = 
+  with(person_df_dis_sm,ifelse(hh_race == "White", 'White', 'POC/Other'))
+
+#prev residency type
+person_df_dis_sm$prev_res_type_upd <- person_df_dis_sm$prev_res_type
+#person_df_dis_sm$prev_res_type_upd[person_df_dis_sm$prev_res_type== 'Prefer not to answer']<-'100,000-$149,999'
+person_df_dis_sm$prev_res_type_upd[person_df_dis_sm$prev_res_type== 'Building with 3 or fewer apartments/condos']<-'apartments/condos and other'
+person_df_dis_sm$prev_res_type_upd[person_df_dis_sm$prev_res_type== 'Building with 4 or more apartments/condos']<-'apartments/condos and other'
+person_df_dis_sm$prev_res_type_upd[person_df_dis_sm$prev_res_type== 'Dorm or institutional housing']<-'apartments/condos and other'
+person_df_dis_sm$prev_res_type_upd[person_df_dis_sm$prev_res_type== 'Mobile home/trailer'] <- 'apartments/condos and other'
+person_df_dis_sm$prev_res_type_upd[person_df_dis_sm$prev_res_type== 'Other (including boat, RV, van, etc.)'] <- 'apartments/condos and other'
+person_df_dis_sm$prev_res_type_upd[person_df_dis_sm$prev_res_type== 'Single-family house (detached house)'] <- 'Singe-family house'
+person_df_dis_sm$prev_res_type_upd[person_df_dis_sm$prev_res_type== 'Townhouse (attached house)'] <- 'apartments/condos and other'
+
+
 # Variables to Try in the Model Fitting Below
-less_vars<-c('displaced', "hhincome_mrbroad", 'hh_all_people_of_color', 
+less_vars<-c('displaced', "hhincome_mrbroad",  
             'rent_or_not',
              'vehicle_group', 'size_group',
             'seattle',
-            'dist_lrt', 'race_category', 'lifecycle', 'hh_has_children')
+            'dist_lrt', 'hh_race', 'hh_age')
  
 x_sm<-less_vars[!less_vars %in% "displaced"]
 person_df_ls<-person_df_dis_sm[less_vars]
@@ -279,8 +236,7 @@ x_sm<-c(x_sm)
 
 # Estimate the model
 
-displ_logit<-glm(displaced ~ hh_all_people_of_color+hhincome_mrbroad+rent_or_not+vehicle_group+seattle+
-                 dist_lrt ,data=person_df_ls,
+displ_logit<-glm(displaced ~. ,data=person_df_ls,
                  family = 'binomial')
 summary(displ_logit, correlation= TRUE)
 
@@ -289,6 +245,63 @@ summary(displ_logit, correlation= TRUE)
 plot_summs(displ_logit, scale = TRUE)
 
 #https://towardsdatascience.com/visualizing-models-101-using-r-c7c937fc5f04
+
+#model with updated race and prev residency type
+less_vars<-c('displaced', "hhincome_mrbroad",  
+             
+             'vehicle_group', 'size_group',
+             'seattle',
+             'dist_lrt', 'hh_race_upd', 'hh_age','sf_house')
+
+x_sm<-less_vars[!less_vars %in% "displaced"]
+person_df_ls<-person_df_dis_sm[less_vars]
+x_sm<-c(x_sm)
+
+# Estimate the model
+
+displ_logit<-glm(displaced ~. ,data=person_df_ls,
+                 family = 'binomial')
+summary(displ_logit, correlation= TRUE)
+
+#https://cran.r-project.org/web/packages/jtools/vignettes/summ.html#effect_plot
+
+plot_summs(displ_logit, scale = TRUE)
+
+#https://towardsdatascience.com/visualizing-models-101-using-r-c7c937fc5f04
+
+#model with updated race
+less_vars<-c('displaced', "hhincome_mrbroad",  
+             'rent_or_not',
+             'vehicle_group', 'size_group',
+             'seattle',
+             'dist_lrt', 'hh_race_upd', 'hh_age')
+
+x_sm<-less_vars[!less_vars %in% "displaced"]
+person_df_ls<-person_df_dis_sm[less_vars]
+x_sm<-c(x_sm)
+
+# Estimate the model
+
+displ_logit<-glm(displaced ~. ,data=person_df_ls,
+                 family = 'binomial')
+summary(displ_logit, correlation= TRUE)
+
+#model with updated race and education
+less_vars<-c('displaced', "hhincome_mrbroad",  
+             'rent_or_not',
+             'vehicle_group', 'size_group',
+             'seattle',
+             'dist_lrt', 'hh_race_upd', 'hh_age', 'college')
+
+x_sm<-less_vars[!less_vars %in% "displaced"]
+person_df_ls<-person_df_dis_sm[less_vars]
+x_sm<-c(x_sm)
+
+# Estimate the model
+
+displ_logit<-glm(displaced ~. ,data=person_df_ls,
+                 family = 'binomial')
+summary(displ_logit, correlation= TRUE)
 
 #plot_model(displ_logit, transform = NULL, show.values = TRUE, axis.labels = '', value.offset = .4)
 #effect_plot(plot(allEffects(displ_logit))displ_logit, pred = poor_english, interval = TRUE, plot.points = TRUE)
