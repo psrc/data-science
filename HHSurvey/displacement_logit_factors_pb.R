@@ -220,16 +220,6 @@ person_df_dis_sm$hh_race_poc =
 person_df_dis_sm$hh_race_other = 
   with(person_df_dis_sm,ifelse(hh_race == "Other", 'Other', 'Asian/POC/White'))
 
-#prev residency type
-person_df_dis_sm$prev_res_type_upd <- person_df_dis_sm$prev_res_type
-#person_df_dis_sm$prev_res_type_upd[person_df_dis_sm$prev_res_type== 'Prefer not to answer']<-'100,000-$149,999'
-person_df_dis_sm$prev_res_type_upd[person_df_dis_sm$prev_res_type== 'Building with 3 or fewer apartments/condos']<-'apartments/condos and other'
-person_df_dis_sm$prev_res_type_upd[person_df_dis_sm$prev_res_type== 'Building with 4 or more apartments/condos']<-'apartments/condos and other'
-person_df_dis_sm$prev_res_type_upd[person_df_dis_sm$prev_res_type== 'Dorm or institutional housing']<-'apartments/condos and other'
-person_df_dis_sm$prev_res_type_upd[person_df_dis_sm$prev_res_type== 'Mobile home/trailer'] <- 'apartments/condos and other'
-person_df_dis_sm$prev_res_type_upd[person_df_dis_sm$prev_res_type== 'Other (including boat, RV, van, etc.)'] <- 'apartments/condos and other'
-person_df_dis_sm$prev_res_type_upd[person_df_dis_sm$prev_res_type== 'Single-family house (detached house)'] <- 'Singe-family house'
-person_df_dis_sm$prev_res_type_upd[person_df_dis_sm$prev_res_type== 'Townhouse (attached house)'] <- 'apartments/condos and other'
 
 
 # Variables to Try in the Model Fitting Below
@@ -328,7 +318,6 @@ displ_logit<-glm(displaced ~. ,data=person_df_ls,
 summary(displ_logit, correlation= TRUE)
 
 #model with different race classifications - non-asian POC; deleted hh_size, distance to lrt
-#model with updated race
 less_vars<-c('displaced', "hhincome_mrbroad",  
              'rent_or_not',
              'vehicle_group', 
