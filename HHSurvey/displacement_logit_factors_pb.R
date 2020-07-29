@@ -211,6 +211,15 @@ person_df_dis_sm[sapply(person_df_dis_sm, is.character)] <- lapply(person_df_dis
 person_df_dis_sm$hh_race_upd = 
   with(person_df_dis_sm,ifelse(hh_race == "White", 'White', 'POC/Other'))
 
+person_df_dis_sm$hh_race_asian = 
+  with(person_df_dis_sm,ifelse(hh_race == "Asian", 'Asian', 'non-Asian/White/Other'))
+
+person_df_dis_sm$hh_race_poc = 
+  with(person_df_dis_sm,ifelse(hh_race == "Non-Asian POC", 'Non-Asian POC', 'Asian/White/Other'))
+
+person_df_dis_sm$hh_race_other = 
+  with(person_df_dis_sm,ifelse(hh_race == "Other", 'Other', 'Asian/POC/White'))
+
 #prev residency type
 person_df_dis_sm$prev_res_type_upd <- person_df_dis_sm$prev_res_type
 #person_df_dis_sm$prev_res_type_upd[person_df_dis_sm$prev_res_type== 'Prefer not to answer']<-'100,000-$149,999'
@@ -302,6 +311,76 @@ x_sm<-c(x_sm)
 displ_logit<-glm(displaced ~. ,data=person_df_ls,
                  family = 'binomial')
 summary(displ_logit, correlation= TRUE)
+
+#model with updated race
+less_vars<-c('displaced', "hhincome_mrbroad",  
+             'rent_or_not',
+             'vehicle_group', 'size_group',
+             'seattle',
+             'dist_lrt', 'hh_race_upd')
+
+x_sm<-less_vars[!less_vars %in% "displaced"]
+person_df_ls<-person_df_dis_sm[less_vars]
+x_sm<-c(x_sm)
+
+displ_logit<-glm(displaced ~. ,data=person_df_ls,
+                 family = 'binomial')
+summary(displ_logit, correlation= TRUE)
+
+#model with different race classifications - non-asian POC; deleted hh_size, distance to lrt
+#model with updated race
+less_vars<-c('displaced', "hhincome_mrbroad",  
+             'rent_or_not',
+             'vehicle_group', 
+             'seattle',
+             'hh_race_poc', 'hh_age')
+
+x_sm<-less_vars[!less_vars %in% "displaced"]
+person_df_ls<-person_df_dis_sm[less_vars]
+x_sm<-c(x_sm)
+
+# Estimate the model
+
+displ_logit<-glm(displaced ~. ,data=person_df_ls,
+                 family = 'binomial')
+summary(displ_logit, correlation= TRUE)
+
+##model with different race classifications - Asian
+
+less_vars<-c('displaced', "hhincome_mrbroad",  
+             'rent_or_not',
+             'vehicle_group', 
+             'seattle',
+             'hh_race_asian', 'hh_age')
+
+x_sm<-less_vars[!less_vars %in% "displaced"]
+person_df_ls<-person_df_dis_sm[less_vars]
+x_sm<-c(x_sm)
+
+# Estimate the model
+
+displ_logit<-glm(displaced ~. ,data=person_df_ls,
+                 family = 'binomial')
+summary(displ_logit, correlation= TRUE)
+
+##model with different race classifications - Other
+
+less_vars<-c('displaced', "hhincome_mrbroad",  
+             'rent_or_not',
+             'vehicle_group', 
+             'seattle',
+             'hh_race_other', 'hh_age')
+
+x_sm<-less_vars[!less_vars %in% "displaced"]
+person_df_ls<-person_df_dis_sm[less_vars]
+x_sm<-c(x_sm)
+
+# Estimate the model
+
+displ_logit<-glm(displaced ~. ,data=person_df_ls,
+                 family = 'binomial')
+summary(displ_logit, correlation= TRUE)
+
 
 #plot_model(displ_logit, transform = NULL, show.values = TRUE, axis.labels = '', value.offset = .4)
 #effect_plot(plot(allEffects(displ_logit))displ_logit, pred = poor_english, interval = TRUE, plot.points = TRUE)
