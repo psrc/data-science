@@ -67,7 +67,7 @@ parcel_df<-read.table(parcel_data, header=TRUE, sep='')
 # calculate if they have any people of color, people over 65
 # Create a person table narrowed to age and race fields
 
-
+person_dt[,('hh_all_people_of_color'):= lapply(.SD, function(x) ifelse(all(.SD!='White Only'), 'hh_all_people_of_color', 'hh_not_all_people_of_color')), .SDcols='race_category', by=hhid]
 person_dt[,('hh_any_older'):= lapply(.SD, function(x) ifelse(any(.SD!='65 years+'), 'hh_any_65p', 'hh_not_all_65p')), .SDcols='age_category', by=hhid]
 person_dt[,('hh_has_children'):= lapply(.SD, function(x) ifelse(any(.SD=='Under 18 years'), 'hh_has_children', 'hh_no_children')), .SDcols='age_category', by=hhid]
 
@@ -138,7 +138,7 @@ person_df_dis_parcel[parcel_based_vars] <- lapply(person_df_dis_parcel[parcel_ba
 
 
 # There are over a hundred variables on the dataframe- just limit it to potential variables
-vars_to_consider <- c('displaced','hh_any_older', 'hh_has_children',"nonwhite","poor_english","no_bachelors","rent","cost_burdened", 
+vars_to_consider <- c('displaced','hh_any_older', 'hh_all_people_of_color', 'hh_has_children',"nonwhite","poor_english","no_bachelors","rent","cost_burdened", 
                       "severe_cost_burdened","poverty_200"	,
                       "ln_jobs_auto_30", "ln_jobs_transit_45", "transit_qt_mile","transit_2025_half",
                        "dist_super", "dist_pharm", "dist_rest","dist_park.x",	"dist_school",
@@ -205,7 +205,6 @@ person_df_dis_sm$hhincome_mrbroad[person_df_dis_sm$hhincome_broad== 'Prefer not 
 person_df_dis_sm$dist_prem_bus<-pmin(person_df_dis_sm$dist_ebus, person_df_dis_sm$dist_fry, person_df_dis_sm$dist_lrt)
 person_df_dis_sm$dist_bus<-pmin(person_df_dis_sm$dist_lbus,person_df_dis_sm$dist_ebus, person_df_dis_sm$dist_fry, person_df_dis_sm$dist_lrt)
 
-person_df_dis_sm[sapply(person_df_dis_sm, is.character)] <- lapply(person_df_dis_sm[sapply(person_df_dis_sm, is.character)], as.factor)
 
 #new race category based on hh_race
 person_df_dis_sm$hh_race_upd = 
@@ -220,7 +219,7 @@ person_df_dis_sm$hh_race_poc =
 person_df_dis_sm$hh_race_other = 
   with(person_df_dis_sm,ifelse(hh_race == "Other", 'Other', 'Asian/POC/White'))
 
-
+person_df_dis_sm[sapply(person_df_dis_sm, is.character)] <- lapply(person_df_dis_sm[sapply(person_df_dis_sm, is.character)], as.factor)
 
 # Variables to Try in the Model Fitting Below
 less_vars<-c('displaced', "hhincome_mrbroad",  
@@ -273,7 +272,8 @@ less_vars<-c('displaced', "hhincome_mrbroad",
              'rent_or_not',
              'vehicle_group', 'size_group',
              'seattle',
-             'dist_lrt', 'hh_race_upd', 'hh_age')
+             'dist_lrt', #'hh_race_upd',
+             'hh_all_people_of_color','hh_age')
 
 x_sm<-less_vars[!less_vars %in% "displaced"]
 person_df_ls<-person_df_dis_sm[less_vars]
@@ -358,7 +358,7 @@ less_vars<-c('displaced', "hhincome_mrbroad",
              'rent_or_not',
              'vehicle_group', 
              'seattle',
-             'hh_race_other', 'hh_age')
+             'hh_race_upd', 'hh_age')
 
 x_sm<-less_vars[!less_vars %in% "displaced"]
 person_df_ls<-person_df_dis_sm[less_vars]
@@ -370,6 +370,45 @@ displ_logit<-glm(displaced ~. ,data=person_df_ls,
                  family = 'binomial')
 summary(displ_logit, correlation= TRUE)
 
+
+#lasso
+#remove NAs from the original df
+
+person_df_dis_sm_upd = person_df_dis_sm[complete.cases(person_df_dis_sm), ]
+person_df_dis_sm_upd1 = person_df_dis_sm[complete.cases(person_df_dis_sm), ]
+
+person_df_dis_sm_upd1$displaced = NULL
+person_df_dis_sm_upd1$displaced.1 = NULL
+to_remove = c("hhincome_broad","race_category", "age", "lifecycle", "hhincome_detailed", "age_category.1", "age_category", "education",
+              "numadults", "prev_rent_own", "seattle rgc",  "prev_res_type", "numchildren", "numworkers", "hhsize", "age_category", "res_dur", "dist_ebus",
+              "dist_fry", "dist_lrt", "dist_lbus",'vehicle_count',"hh_race","age_group","hh_race_upd","hh_race_asian", "hh_race_poc",
+              "hh_race_other","hh_any_older")
+person_df_dis_sm_upd1 = person_df_dis_sm_upd1[, !colnames(person_df_dis_sm_upd1) %in% to_remove]
+
+
+x_train <- model.matrix( ~ .-1, person_df_dis_sm_upd1)
+lm = glmnet(x=x_train,y = (person_df_dis_sm_upd$displaced), 
+               intercept=FALSE ,family =   "binomial", alpha=0.4, nfolds=7)
+coef(lm,s = 0.1)
+best_lambda <- lm$lambda[which.min(lm$cvm)]
+
+##model with variables based on the lasso methodology
+
+less_vars<-c('displaced', "hh_all_people_of_color",  
+             'transit_2025_half',
+             'dist_school',"growth_center_name","stugrd_2", 
+             "empofc_2", "pprichr2", "hh_age",
+             'dist_crt',"rent_or_not","moved_lst_yr", "hhincome_mrbroad")
+
+x_sm<-less_vars[!less_vars %in% "displaced"]
+person_df_ls<-person_df_dis_sm[less_vars]
+x_sm<-c(x_sm)
+
+# Estimate the model
+
+displ_logit<-glm(displaced ~. ,data=person_df_ls,
+                 family = 'binomial')
+summary(displ_logit, correlation= TRUE)
 
 #plot_model(displ_logit, transform = NULL, show.values = TRUE, axis.labels = '', value.offset = .4)
 #effect_plot(plot(allEffects(displ_logit))displ_logit, pred = poor_english, interval = TRUE, plot.points = TRUE)
