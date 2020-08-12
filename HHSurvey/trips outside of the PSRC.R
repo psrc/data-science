@@ -51,3 +51,7 @@ temp2 %>% select(trip_weight_revised,trip_wt_2019, trip_wt_combined) %>%
 # sum of the weights for trips that have both O and D outside of the PSRC region
 trips_both_outside %>% select(trip_weight_revised,trip_wt_2019, trip_wt_combined) %>% 
   summarize(sum_wt_comb = sum(trip_wt_combined,na.rm = TRUE),sum_wt_2017 = sum(trip_weight_revised,na.rm = TRUE),sum_wt_2019 = sum(trip_wt_2019,na.rm = TRUE))
+
+# sum of the weights for ALL trips 
+trips_new_mobility%>% select(trip_weight_revised,trip_wt_2019, trip_wt_combined) %>% 
+  summarize(sum_wt_comb = sum(trip_wt_combined,na.rm = TRUE),sum_wt_2017 = sum(trip_weight_revised,na.rm = TRUE),sum_wt_2019 = sum(trip_wt_2019,na.rm = TRUE))
