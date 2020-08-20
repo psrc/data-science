@@ -1,0 +1,71 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+---
+title: "What Data Science Can Do For You"
+author: "The Data Science Team at PSRC"
+output: html_document
+
+---
+
+
+```{=html}
+<style type="text/css">
+  .figure {
+    float: right;
+    text-align: center;
+  }
+</style>
+```
+
+``` {r fig.cap = "PSRC Data Science skills", echo=FALSE}
+knitr::include_graphics("C:/Users/SChildress/Documents/GitHub/data-science/what_we_can_do/DataScience.png")
+```
+
+
+## 	Build apps to visualize and explain data
+
+*Examples:*
+
+[Household Travel Survey Data Explorer](http://dataexplorer.psrc.org/household-travel-survey)
+
+[COVID-19 Dashboard](http://aws-linux:3838/covid19-dashboard/)
+
+[SoundCast Model Output Visualization](http://aws-linux/soundcast_dash)
+
+
+## Manage and organize your data
+
+Our team has been building a data warehouse with the goal of having better organized, easy-to-use, and well-documented data. The data warehouse establishes a standard location and format for our data. We would love to add your data to the warehouse over time.  
+
+## Automate manual processes
+
+1. Automate complex or repetitive GIS workflows. For example, some data may need to be updated quarterly and in this case should be automated. 
+
+2. Replace complex, hard-to-follow spreadsheets that do critical calculations with more documented and easier to replicate processes.
+
+3. Capture the expertise and skill of team members by codifying the steps they have developed over many years.
+
+## Help in data analysis and visualization
+
+Some data analysis and visualization may require scripting, and we can jump in and help.
+
+## Find and pull new and/or common data sources using code
+
+New planning data sources are coming online everyday. We can script processes to pull from innovative and big data repositories. We can also schedule these processes to periodically occur to get the latest data with little overhead.
+
+*Examples:*
+
+* Using google data, we found the distance to the nearest grocery store from any location. We used this in displacement risk analysis to show which locations were at risk for displacement because they had many amenities like grocery stores nearby.
+* Census data extractions can be performed in a more automated, less laborious way
+* Using the google data,we found travel times between pairs of locations to analyze household travel survey data
+
+
+## Teach basic scripting and statistical skills so you can do all these things too!
+
+## Who are we?
+
+Our data science group team members are Polina Butrina, Suzanne Childress, Christy Lam, Craig Helmann, Michael Jensen, Diana Martinez, and Chris Peak. We are all proficient to advanced programmers. Our team has expertise in programming in R, Python, T-SQL, CSS, and C#, among other languages.  We have expertise in SQL Server and database management systems.  We also have expertise in GIS, statistics, machine learning, math, and modeling.
+</div>
