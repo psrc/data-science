@@ -68,4 +68,3 @@ New planning data sources are coming online everyday. We can script processes to
 ## Who are we?
 
 Our data science group team members are Polina Butrina, Suzanne Childress, Christy Lam, Craig Helmann, Michael Jensen, Diana Martinez, and Chris Peak. We are all proficient to advanced programmers. Our team has expertise in programming in R, Python, T-SQL, CSS, and C#, among other languages.  We have expertise in SQL Server and database management systems.  We also have expertise in GIS, statistics, machine learning, math, and modeling.
-</div>
