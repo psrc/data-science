@@ -40,13 +40,14 @@ acs_rent_inc = read.csv("C:/Users/SChildress/Documents/HHSurvey/displace_estimat
 
 dissim<-read.xlsx("C:/Users/SChildress/Documents/HHSurvey/displace_estimate/dissimilarity_2018.xlsx")
 
+housing_policy<-read.xlsx("C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/estimation_displace/housing_policy_city.xlsx")
 
 
 ## Read person-displacement data from Elmer, other travel survey data as well
 db.connect <- function() {
   elmer_connection <- dbConnect(odbc(),
                                 driver = "SQL Server",
-                                server = "AWS-PROD-SQL\\COHO",
+                                server = "AWS-PROD-SQL\\SOCKEYE",
                                 database = "Elmer",
                                 trusted_connection = "yes"
   )
@@ -109,8 +110,10 @@ for (factor in res_factors){
   
 }
 
+housing_policy[is.na(housing_policy)]<-0
+housing_policy[housing_policy=='x']<-1
 
-
+person_df <- merge(person_df, housing_policy, by.x='city_name', by.y='Jurisdiction')
 
 
 # Joining the person data to census tract and parcel-based land use data
@@ -178,7 +181,7 @@ vars_to_consider <- c('displaced','hh_any_older', 'hh_has_children',"nonwhite","
                       "Median.household.income", "LN.Median.Income","Median.Rent"
                       )
 
-vars_to_consider<-c(vars_to_consider, names(dissim))
+vars_to_consider<-c(vars_to_consider, names(dissim),names(housing_policy))
 
 #person_df_dis_sm <-person_df_dis_parcel[vars_to_consider]
 
@@ -275,8 +278,16 @@ person_df_dis_sm$'Black_AIAN'<-100*person_df_dis_sm$'Black-AIAN'
 #                     hh_race_upd+hh_broad_age+no_bachelors+dist_school+poor_english+sqrt_median_rent+
 #                     hhincome_mrbroad*Percent.Less.than.50K+hhincome_mrbroad*Percent.Above.150K,data=person_df_dis_sm,
 #                   family
+
+displacement_variables=c('RA', 'SP', 'FR','RP','MHP','DM','NO',
+                         'DBP', 'DBSH', 'DBFAM', 'DB80', 
+                         'INP', 'INSH', 'INFAM', 'IN80',
+                         'PKP', 'PKSH', 'PKFAM', 'PK80',
+                         'PLP', 'PLSH', 'PLFAM', 'PL80')
+person_df_dis_sm$ln_nu_total<- log(1+person_df_dis_sm$NUTotal)
+
 displ_logit<-glm(displaced ~ hhincome_mrbroad+hh_broad_age+rent_or_not
-                 +vehicle_group+Percent.50K..100K+White_pct,
+                 +vehicle_group+Percent.50K..100K+hh_race_poc+DBP+PP,
                    data=person_df_dis_sm,
                    family = 'binomial')
 
