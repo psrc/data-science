@@ -322,7 +322,7 @@ person_df_dis_sm$ln_score <-log(1+person_df_dis_sm$score)
 
 
 displ_logit<-glm(displaced ~ hhincome_mrbroad+hh_broad_age+rent_or_not
-                 +vehicle_group+Percent.50K..100K+hh_race_poc+DBP+PP+tstops_2,
+                 +vehicle_group+Percent.50K..100K+hh_race_poc+DBP+PP+ln_scaled_score,
                    data=person_df_dis_sm,
                    family = 'binomial')
 
