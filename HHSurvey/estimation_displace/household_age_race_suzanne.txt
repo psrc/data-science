@@ -1,0 +1,101 @@
+# Read in household and person tables
+
+person_lt <- person %>% # making a stripped down person table for easier viewing
+  select(household_id,
+         person_id,
+         age,
+         age_category,
+         starts_with("race_")
+         ) %>% 
+  mutate(age_cat_narrow = case_when(
+                          age %in% c("Under 5 years old", "5-11 years", "12-15 years", "16-17 years")
+                          ~ "Persons under 18",
+                          age %in% c("18-24 years", "25-34 years")
+                          ~ "Persons 18-34 years",
+                          age %in% c("35-44 years", "45-54 years", "55-64 years")
+                          ~ "Persons 35-64 years",
+                          age %in% c("65-74 years", "75-84 years", "85 or years older")
+                          ~ "Persons 65+"
+                          ),
+         person_race_category = case_when(
+                                age_category == "Under 18 years" ~ "Child",
+                                race_afam == "Selected" & 
+                                  race_aiak == "Not Selected" & 
+                                  race_asian == "Not Selected" & 
+                                  race_hapi == "Not Selected" & 
+                                  race_other == "Not Selected" & 
+                                  race_noanswer == "Not Selected" & 
+                                  race_hisp == "Not Selected"  ~ "African American",
+                                race_asian == "Selected" & 
+                                  race_aiak == "Not Selected" & 
+                                  race_afam == "Not Selected" & 
+                                  race_hapi == "Not Selected" & 
+                                  race_other == "Not Selected" & 
+                                  race_noanswer == "Not Selected" & 
+                                  race_hisp == "Not Selected" ~ "Asian",
+                                race_white == "Selected" & 
+                                  race_afam == "Not Selected" & 
+                                  race_aiak == "Not Selected" & 
+                                  race_asian == "Not Selected" & 
+                                  race_hapi == "Not Selected" & 
+                                  race_hisp == "Not Selected" & 
+                                  race_other == "Not Selected" & 
+                                  race_noanswer == "Not Selected" ~ "White Only",
+                                race_hisp == "Selected" &
+                                  race_afam == "Not Selected" & 
+                                  race_aiak == "Not Selected" & 
+                                  race_asian == "Not Selected" & 
+                                  race_hapi == "Not Selected" & 
+                                  race_other == "Not Selected" & 
+                                  race_noanswer == "Not Selected"  ~ "Hispanic",
+                                  race_noanswer == "Selected" ~ "Missing",
+                                TRUE ~ "Other"
+         )) %>% 
+         group_by(household_id) %>% # group by household to create household ages
+         mutate(hh_age = case_when(
+                         any(age_cat_narrow == "Persons under 18") ~ "Household with children",
+                         any(age_cat_narrow == "Persons 65+") ~ "Household age 65+",
+                         any(age_cat_narrow == "Persons 35-64 years") ~ "Household age 35-64",
+                         TRUE ~ "Household excl. age 18-34"
+         )) %>% 
+         ungroup()
+
+# Assign each person a race category interger code
+person_lt$person_race_code <- case_when(
+  person_lt$person_race_category == "White Only" ~ "1",
+  person_lt$person_race_category == "African American" ~ "2",
+  person_lt$person_race_category == "Asian" ~ "3",
+  person_lt$person_race_category == "Hispanic" ~ "4",
+  person_lt$person_race_category == "Other" ~ "5",
+  person_lt$person_race_category == "Missing" ~ "9",
+  person_lt$person_race_category == "Child" ~ ""
+)
+
+# New table with only new variables for joining to the household table
+hh_cat <- person_lt %>% 
+  group_by(household_id) %>% 
+  summarize(hh_age = first(hh_age), # using first() function since hh_age is the same for each person in household
+            hh_race_code = paste0(person_race_code, collapse = "")) # create a household race code with integer codes of all persons in household
+
+hh_cat$hh_race_category2 <- case_when( # using a grep function to create household race category based on integer codes
+  grepl("9", hh_cat$hh_race_code) ~ "Missing",
+  grepl("5", hh_cat$hh_race_code) ~ "Other",
+  grepl("1", hh_cat$hh_race_code) & 
+    !grepl("2", hh_cat$hh_race_code) & 
+    !grepl("3", hh_cat$hh_race_code) &
+    !grepl("4", hh_cat$hh_race_code) ~ "White Only",
+  grepl("2", hh_cat$hh_race_code) &
+    !grepl("3", hh_cat$hh_race_code) &
+    !grepl("4", hh_cat$hh_race_code) ~ "African American",
+  grepl("3", hh_cat$hh_race_code) &
+    !grepl("2", hh_cat$hh_race_code) &
+    !grepl("4", hh_cat$hh_race_code) ~ "Asian",
+  grepl("4", hh_cat$hh_race_code) &
+    !grepl("2", hh_cat$hh_race_code) &
+    !grepl("3", hh_cat$hh_race_code) ~ "Hispanic",
+  TRUE ~ "Other" # here all household codes not found in the above definitions receive "Other"
+)
+
+# Join tables by household_id to add new variables to household table
+hh_region <- left_join(hh_2019, hh_cat,
+                       by = c("household_id" = "household_id"))

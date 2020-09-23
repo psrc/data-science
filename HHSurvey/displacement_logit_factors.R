@@ -42,6 +42,9 @@ dissim<-read.xlsx("C:/Users/SChildress/Documents/HHSurvey/displace_estimate/diss
 
 housing_policy<-read.xlsx("C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/estimation_displace/housing_policy_city.xlsx")
 
+movers_score = read.csv("C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/estimation_displace/movers_score2018.csv")
+
+out_file= "C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/estimation_displace/displace_estimate_results.csv"
 
 ## Read person-displacement data from Elmer, other travel survey data as well
 db.connect <- function() {
@@ -64,6 +67,32 @@ read.dt <- function(astring, type =c('table_name', 'sqlquery')) {
   setDT(dtelm)
 }
 
+glmOut <- function(res, file=out_file, ndigit=3, writecsv=T) {
+  if (length(grep("summary", class(res)))==0) res <- summary(res)
+  co <- res$coefficients
+  nvar <- nrow(co)      # No. row as in summary()$coefficients
+  ncoll <- ncol(co)     # No. col as in summary()$coefficients
+  
+  formatter <- function(x) format(round(x,ndigit),nsmall=ndigit)
+  nstats <- 4           # sets the number of rows to record the coefficients           
+  G <- matrix("", nrow=(nvar+nstats), ncol=(ncoll+1))       # storing data for output
+  G[1,1] <- toString(res$call)
+  G[(nstats+1):(nvar+nstats),1] <- rownames(co) # save rownames and colnames
+  G[nstats, 2:(ncoll+1)] <- colnames(co)
+  G[(nstats+1):(nvar+nstats), 2:(ncoll+1)] <- formatter(co)  # save coefficients
+  
+  G[1,2] <- "AIC"  # save AIC value
+  G[2,2] <- res$aic
+  G[1,3] <- "Residual Deviance"
+  G[2,3] <- res$deviance
+  G[1,4] <- "Null deviance"
+  G[2,4] <- res$null.deviance
+  G[1,5] <- "McFadden/Nagel PseuedoR-Squared" # save R2 value
+  G[2,5] <- PseudoR2(res, c("McFadden", "Nagel")) # calculate R2
+
+  print(G)
+  write.csv(G, file=file, row.names=F)
+}
 
 dbtable.person.query<- paste("SELECT *  FROM HHSurvey.v_persons_2017_2019_displace_estimation_2014parcels")
 person_dt<-read.dt(dbtable.person.query, 'tablename')
@@ -133,6 +162,7 @@ person_df_dis <- merge(person_df_dis,dissim, by.x='census_2010_tract', by.y='GEO
 
 
 
+
 #a list of parcel -based variables I'd like to try in the model, there are more on the file
 
 parcel_based_vars<-c('hh_2', 'stugrd_2', 'stuhgh_2', 'stuuni_2', 'empedu_2', 'empfoo_2', 'empgov_2', 'empind_2',
@@ -149,7 +179,8 @@ parcel_df$parcelid <- as.character(parcel_df$parcelid)
 #merging by the previous residence parcel from the person table and by the parcel id in the parcel table
 person_df_dis_parcel<- merge(person_df_dis, parcel_df, by.x='parcel_id', by.y='parcelid', all.x = TRUE)
 
-
+movers_score$parcel<-as.character(movers_score$PSRC_ID)
+person_df_dis_parcel<-merge(person_df_dis, movers_score, by.x='parcel_id', by.y='parcel')
 
 person_df_dis_parcel$hhid <- as.character(person_df_dis_parcel$hhid)
 hh_race_age_cat$household_id <- as.character(hh_race_age_cat$household_id)
@@ -285,11 +316,21 @@ displacement_variables=c('RA', 'SP', 'FR','RP','MHP','DM','NO',
                          'PKP', 'PKSH', 'PKFAM', 'PK80',
                          'PLP', 'PLSH', 'PLFAM', 'PL80')
 person_df_dis_sm$ln_nu_total<- log(1+person_df_dis_sm$NUTotal)
+person_df_dis_sm$ln_scaled_score<-log(1+person_df_dis_sm$scaled_score)
+person_df_dis_sm$ln_score <-log(1+person_df_dis_sm$score)
+
+
 
 displ_logit<-glm(displaced ~ hhincome_mrbroad+hh_broad_age+rent_or_not
-                 +vehicle_group+Percent.50K..100K+hh_race_poc+DBP+PP,
+                 +vehicle_group+Percent.50K..100K+hh_race_poc+DBP+PP+tstops_2,
                    data=person_df_dis_sm,
                    family = 'binomial')
+
+# displ_logit<-glm(displaced ~ hhincome_mrbroad+hh_broad_age+rent_or_not
+#                  +vehicle_group+Percent.50K..100K+hh_race_poc+DBP+PP+ln_scaled_score,
+#                    data=person_df_dis_sm,
+#                    family = 'binomial')
+
 
 summary(displ_logit, correlation= TRUE, family = 'binomial')
 
@@ -297,6 +338,7 @@ summary(displ_logit, correlation= TRUE, family = 'binomial')
 
 
 
+glmOut(displ_logit)
 #https://cran.r-project.org/web/packages/jtools/vignettes/summ.html#effect_plot
 
 plot_summs(displ_logit, scale = TRUE)
