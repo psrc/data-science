@@ -164,4 +164,4 @@ person_no_na = person_no_na %>% filter(!mode_freq_5 %in% missing_codes)
 
 #here is an example for mode_freq_5 variable
 
-create_table_one_var("mode_freq_5", person,"person" )
+create_table_one_var("mode_freq_5", person_no_na,"person" )
