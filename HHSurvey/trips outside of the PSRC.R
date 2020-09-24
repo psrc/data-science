@@ -1,5 +1,9 @@
 #This script helps to identify the trips that are outside of the PSRC region and have weights.
 
+library(rgeos)
+library(sp)
+library(rgdal)
+library(sf)
 #first, we need to lead some functions including connections to Elmer
 source('global.R')
 
@@ -55,3 +59,50 @@ trips_both_outside %>% select(trip_weight_revised,trip_wt_2019, trip_wt_combined
 # sum of the weights for ALL trips 
 trips_new_mobility%>% select(trip_weight_revised,trip_wt_2019, trip_wt_combined) %>% 
   summarize(sum_wt_comb = sum(trip_wt_combined,na.rm = TRUE),sum_wt_2017 = sum(trip_weight_revised,na.rm = TRUE),sum_wt_2019 = sum(trip_wt_2019,na.rm = TRUE))
+
+# estimating the precise out of the region trips using geograpghic locations
+
+#download counties
+county_psrc_counties <- tracts("WA", county = c(033,035,053,061), cb = TRUE)
+
+#loop checking if the origin or destination of the trip outside of the region or not
+for (row in 1:nrow(trips_with_weights)) {
+  o_lat = trips_with_weights[row,"origin_lat"]
+  o_lon = trips_with_weights[row,"origin_lng"]
+  d_lat = trips_with_weights[row,"dest_lat"]
+  d_lon = trips_with_weights[row,"dest_lng"]
+  
+  dat = data.frame(Latitude = c(o_lat, d_lat),
+                   Longitude = c(o_lon,d_lon))
+  
+  coordinates(dat) <- ~ Longitude + Latitude
+  
+  proj4string(dat) <- proj4string(county_psrc_counties)
+  
+  over(dat, county_psrc_counties)
+  
+  
+}
+
+#test - join
+
+for (row in 1:1) {
+  o_lat = trips_with_weights$origin_lat[row]
+  o_lon = trips_with_weights$origin_lng[row]
+  d_lat = trips_with_weights$dest_lat[row]
+  d_lon = trips_with_weights$dest_lng[row]
+  
+  dat =data.frame(Latitude = c(o_lat, d_lat),
+                   Longitude = c(o_lon,d_lon))
+  coordinates(dat) <- c('Latitude','Longitude') 
+  
+  locations_sf = st_as_sf(dat,dat = c("Longitude","Latitude" ), crs = 4326)
+  locations_sf = st_set_crs(locations_sf, 4326)
+  
+  #dat <- spTransform(dat, proj4string(county_psrc_counties))
+  #proj4string(dat) <- proj4string(county_psrc_counties)
+  
+  output_2 = st_intersects(locations_sf,county_psrc_counties)
+}
+
+trip_in_tract <- st_join(locations_sf,county_psrc_counties)
