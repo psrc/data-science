@@ -64,7 +64,7 @@ create_table_one_var = function(var1, table_temp,table_type ) {
     group_by(!!sym(var1)) %>% 
     summarise(n=n(),sum_wt_comb = sum(.data[[weight_comb]],na.rm = TRUE),sum_wt_2017 = sum(.data[[weight_2017]],na.rm = TRUE),sum_wt_2019 = sum(.data[[weight_2019]],na.rm = TRUE)) %>% 
     mutate(perc_comb = sum_wt_comb/sum(sum_wt_comb)*100, perc_2017 = sum_wt_2017/sum(sum_wt_2017)*100, perc_2019 = sum_wt_2019/sum(sum_wt_2019)*100,delta = perc_2019-perc_2017) %>% 
-    ungroup() %>%  mutate(MOE=z*(p_MOE/sum(n))^(1/2)*100) %>% arrange(desc(perc_comb))
+    ungroup() %>%  mutate(MOE=z*((p_MOE*(1-p_MOE))/sum(n))^(1/2)*100) %>% arrange(desc(perc_comb))
   return(temp)
 }
 
