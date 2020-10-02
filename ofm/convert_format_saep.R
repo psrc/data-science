@@ -7,9 +7,10 @@ library(openxlsx)
 library(stringr)
 
 base.dir <- "J:/OtherData/OFM/SAEP"
-dir <- "SAEP Extract_2019-10-15"
+dir <- "SAEP Extract_2020-10-02"
 data.dir <- file.path(dir, "original")
-filename <- "PSRC_SAEP_BLK2010-2019.xlsx"
+filename <- "saep_block10_j.dbf"
+# filename <- "PSRC_SAEP_BLK2010-2019.xlsx"
 
 # functions ---------------------------------------------------------------
 
@@ -26,12 +27,22 @@ convert.file <- function(filename, inputfileformat, outputfileformat){
   if (inputfileformat == "xlsx") df <- read.xlsx(file.path(base.dir, data.dir, filename)) %>% as.data.table
   if (inputfileformat == "csv")   df <- fread(file.path(base.dir, data.dir, filename))
   
-  # 2019 data in different format
-  setnames(df, str_subset(colnames(df), "County|Block"), c("COUNTYFP10", "GEOID10"))
-  colnames(df) <- str_to_upper(colnames(df))
-  dt <- df[, COUNTYFP10 := switch(COUNTYFP10, 'KING' = '033', 'KITSAP' = '035', 'PIERCE' = '053', 'SNOHOMISH' = '061'), by = 'COUNTYFP10']
-  # dt <- filter.for.psrc(df)
+  # # 2019 data in different format (orig as xlsx Mike M version)
+  # setnames(df, str_subset(colnames(df), "County|Block"), c("COUNTYFP10", "GEOID10"))
+  # colnames(df) <- str_to_upper(colnames(df))
+  # dt <- df[, COUNTYFP10 := switch(COUNTYFP10, 'KING' = '033', 'KITSAP' = '035', 'PIERCE' = '053', 'SNOHOMISH' = '061'), by = 'COUNTYFP10']
+  # # dt <- filter.for.psrc(df)
   
+  # 2020 data format (orig as shp dbf, Tom version)
+  id_cols <- c("STATEFP10", "COUNTYFP10", "TRACTCE10", "BLOCKCE10", "GEOID10", "Version")
+  attributes <- c("POP", "HHP","GQ", "HU", "OHU")
+  years <- c(as.character(2010:2020))
+  cols <- apply(expand.grid(attributes, years), 1, function(x) paste0(x[1], x[2]))
+  allcols <- c(id_cols, cols)
+  dt <- df[, ..allcols]
+  colnames(dt) <- str_to_upper(colnames(dt))
+  dt <- filter.for.psrc(dt)
+
   if (outputfileformat == "dbf") write.dbf(dt, file.path(base.dir, dir, "ofm_saep.dbf"))
   if (outputfileformat == "rds") saveRDS(dt, file.path(base.dir, dir, "ofm_saep.rds"))
   if (outputfileformat == "csv") write.csv(dt, file.path(base.dir, dir, "ofm_saep.csv"), row.names = FALSE)
@@ -88,8 +99,9 @@ qc.rds <- function(years) {
 
 
 # convert.file(filename, inputfileformat = "xlsx", outputfileformat = "rds")
-convert.file(filename, inputfileformat = "xlsx", outputfileformat = "dbf")
-test <- read.dbf(file.path(base.dir, dir, 'ofm_saep.dbf'))
+# convert.file(filename, inputfileformat = "xlsx", outputfileformat = "dbf")
+
+convert.file(filename, inputfileformat = "dbf", outputfileformat = "rds")
 
 # QC ----------------------------------------------------------------------
 
