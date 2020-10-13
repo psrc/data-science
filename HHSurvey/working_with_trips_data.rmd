@@ -1,0 +1,102 @@
+---
+title: "Calculating trip rates"
+author: "Polina Butrina"
+date: "10/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(data.table)
+library(tidyverse)
+library(DT)
+library(openxlsx)
+library(odbc)
+library(DBI)
+library(psych)
+
+
+# connecting to Elmer
+db.connect <- function() {
+  elmer_connection <- dbConnect(odbc(),
+                                driver = "SQL Server",
+                                server = "AWS-PROD-SQL\\Sockeye",
+                                database = "Elmer",
+                                trusted_connection = "yes"
+  )
+}
+
+# a function to read tables and queries from Elmer
+read.dt <- function(astring, type =c('table_name', 'sqlquery')) {
+  elmer_connection <- db.connect()
+  if (type == 'table_name') {
+    dtelm <- dbReadTable(elmer_connection, SQL(astring))
+  } else {
+    dtelm <- dbGetQuery(elmer_connection, SQL(astring))
+  }
+  dbDisconnect(elmer_connection)
+  dtelm
+}
+
+```
+
+## R Markdown
+
+For general HHTS data analysis tips and tricks, please refer to this intro from RSG.
+There are several analyses you can do with trips:
+•	Find trip rates
+•	Find a number of trips
+
+### Find Trip Rates
+Trips rates (or the number of trips per day among groups) can be found using following steps:
+
+1.	Filter trip table to just shopping trips
+
+
+```{r cars}
+trip.query = paste("SELECT * FROM HHSurvey.v_trips_2017_2019")
+trips = read.dt(trip.query, 'sqlquery')
+
+shop_trips <- trips %>% filter(d_purp_cat=='Shop')
+
+```
+
+2.	Sum trip_wt_combined multiplied 
+
+```{r}
+sum(shop_trips$trip_wt_combined)
+
+person_shopping_join = shop_trips %>% left_join(person, by = c("person_id" = "person_id") )
+shop_trips_gender<-create_table_one_var('gender', person_shopping_join, 'trip') 
+
+```
+
+3.	Merge trip counts with the day table
+
+```{r}
+days<-paste("SELECT * FROM HHSurvey.v_days_2017_2019_in_house")
+person_days=read.dt(days, 'sqlquery')
+
+person_days_2<-merge(person_days, person, by.x='personid', by.y='person_id')
+
+```
+
+4.	Summarize day trips by gender
+
+```{r}
+
+person_day_gender <- person_days_2 %>% group_by(gender) %>%
+                      summarise(n=n(), day_combined = sum(hh_day_wt_combined.x))
+
+```
+
+5.	Calculate trip rate as sum of shopping trips divided by the number of weighted person days
+
+```{r}
+
+shop_trips_3 <- merge(shop_trips_gender, person_day_gender, by = 'gender')
+shop_trips_3 %>% mutate(trip_rate = sum_wt_comb/day_combined) %>% select(gender,trip_rate)
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
