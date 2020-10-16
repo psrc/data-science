@@ -15,18 +15,7 @@ library(effects)
 library(dplyr)
 library(DescTools)
 
-#The codebook is checked in with these code files, named Combined_Codebook_022020.xlsx
 
-
-################# Input Data File Reading
-# This file contains information by Census Tract such as percent of households https://www.psrc.org/displacement-risk-mapping
-
-#The codebook is checked in with these code files, named Combined_Codebook_022020.xlsx
-
-################# Input Data File Reading
-
-
-## Read person-displacement data from Elmer, other travel survey data as well
 db.connect <- function() {
   elmer_connection <- dbConnect(odbc(),
                                 driver = "SQL Server",
