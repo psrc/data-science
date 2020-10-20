@@ -125,7 +125,7 @@ create_table = function(var1,var2, table_temp ) {
 # * delivery_work_freq (day) - Number of service deliveries on travel day
 
 # Trip analysis - selecting shopping trips =================================
-sql.query <- paste("SELECT * FROM HHSurvey.v_trips_2017_2019_in_house")
+sql.query <- paste("SELECT * FROM HHSurvey.v_trips_2017_2019_public")
 trips = read.dt(sql.query, 'sqlquery')
 
 
@@ -135,7 +135,7 @@ o_shop = trips[trips$o_purp_cat == "Shop",]
 
 #loading day table
 
-sql.query <- paste("SELECT * FROM HHSurvey.v_days_2017_2019_in_house")
+sql.query <- paste("SELECT * FROM HHSurvey.v_days_2017_2019_public")
 days = read.dt(sql.query, 'sqlquery')
 
 #there are shopping trips per person per day
@@ -152,7 +152,7 @@ shop_trip_per_hh = d_shop %>%
   #first, we have to filter the trip data where travelers_hh are missing
   filter(travelers_hh > 0, travelers_hh < 20) %>% 
   mutate(shop_trip = if_else(d_purp_cat == "Shop", 1/travelers_hh,0)) %>% 
-  group_by(household_id) %>% 
+  group_by(hhid) %>% 
   summarise(n = n(), weight_comb = sum(trip_wt_combined*shop_trip ))
 
 sum(shop_trip_per_hh$weight_comb)/sum(days$hh_day_wt_combined)
@@ -160,16 +160,18 @@ sum(shop_trip_per_hh$weight_comb)/sum(days$hh_day_wt_combined)
 # Socio-economic characteristics of people who went shopping 
 
 #join shopping trips and person view
-sql.query <- paste("SELECT * FROM HHSurvey.v_households_2017_2019_in_house")
+sql.query <- paste("SELECT * FROM HHSurvey.v_households_2017_2019_public")
 household = read.dt(sql.query, 'sqlquery')
 
-hh_shopping_join = d_shop %>% left_join(household, by = c("household_id" = "household_id") )
+hh_shopping_join = d_shop %>% left_join(household, by = c("hhid" = "hhid") )
+
+#adding a shopping trip weight for a household
 hh_shopping_join = hh_shopping_join %>% 
   mutate(shop_trip = if_else(d_purp_cat == "Shop", 1/travelers_hh,0))
 
 #join days and household
 
-hh_days = merge(days, household, by.x='hhid', by.y='household_id')
+hh_days = merge(days, household, by.x='hhid', by.y='hhid')
 
 #income
 
@@ -180,10 +182,10 @@ shop_trips_income = hh_shopping_join %>%
                     ungroup() %>%  mutate(MOE=z*(p_MOE/sum(n))^(1/2)*100) %>% arrange(desc(perc_comb))
 
 
-person_day_income <- hh_days %>% group_by(hhincome_broad.x) %>%
+person_day_income <- hh_days %>% group_by(hhincome_broad) %>%
   summarise(n=n(), day_combined = sum(hh_day_wt_combined.x))
 
-day_shop_trips_income <- merge(shop_trips_income, person_day_income, by.x = 'hhincome_broad', by.y = 'hhincome_broad.x')
+day_shop_trips_income <- merge(shop_trips_income, person_day_income, by.x = 'hhincome_broad', by.y = 'hhincome_broad')
 day_shop_trips_income %>% mutate(trip_rate = sum_wt_comb/day_combined) %>% select(hhincome_broad,trip_rate)
 
 
@@ -197,16 +199,16 @@ shop_trips_hhsize = hh_shopping_join %>%
   ungroup() %>%  mutate(MOE=z*(p_MOE/sum(n))^(1/2)*100)
 
 
-person_day_hhsize <- hh_days %>% group_by(hhsize.x) %>%
+person_day_hhsize <- hh_days %>% group_by(hhsize) %>%
   summarise(n=n(), day_combined = sum(hh_day_wt_combined.x))
 
-day_shop_trips_hhsize <- merge(shop_trips_hhsize, person_day_hhsize, by.x = 'hhsize',by.y = 'hhsize.x')
+day_shop_trips_hhsize <- merge(shop_trips_hhsize, person_day_hhsize, by.x = 'hhsize',by.y = 'hhsize')
 day_shop_trips_hhsize %>% mutate(trip_rate = sum_wt_comb/day_combined) %>% select(hhsize,trip_rate)
 
 
 # Delivery analysis - selecting people that received deliveries =================================
 
-sql.query <- paste("SELECT * FROM HHSurvey.v_households_2017_2019_in_house")
+sql.query <- paste("SELECT * FROM HHSurvey.v_households_2017_2019_public")
 hh = read.dt(sql.query, 'sqlquery')
 
 day_upd = days %>% 
@@ -261,7 +263,7 @@ day_household = day_upd %>% group_by(hhid) %>%
   mutate(delivery = if_else(sum_pkg > 0 | sum_groc > 0 | sum_food > 0 , 1, 0)) %>% 
   select(hhid, delivery)
 
-hh_shopping_join_deliv = left_join(hh_shopping_join, day_household , by = c("household_id" = "hhid")) 
+hh_shopping_join_deliv = left_join(hh_shopping_join, day_household , by = c("hhid" = "hhid")) 
 
 #check the weights
 sum(day_hh_join$hh_wt_combined)
