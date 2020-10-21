@@ -64,18 +64,11 @@ glmOut <- function(res, file=out_file, ndigit=3, writecsv=T) {
 }
 
 
-got_delivery<-function(column_name){
-  ifelse(((column_name!='0 (none)') & (column_name!= 'No')),
-         1, 0)
-}
-
-
 
 dbtable.day.query<- paste("SELECT *  FROM HHSurvey.v_days_2017_2019_in_house")
 day_dt<-read.dt(dbtable.day.query, 'tablename')
 
 
-#parcels <- read.csv('C:/Users/SChildress/Documents/HHSurvey/displace_estimate/buffered_parcels.txt', sep= ' ')
 
 day_upd = day_dt %>% 
   mutate(delivery_pkgs_freq_upd = case_when(delivery_pkgs_freq == "0 (none)" ~ 0,
@@ -116,31 +109,48 @@ day_upd = day_dt %>%
 # we need to group by hhid. Another reason to group by hhid is
 # rMove respondents were asked to report # of deliveries received each day
 
-day_household = day_upd %>% group_by(hhid) %>%
+day_household = day_upd %>% group_by(hhid, day_id) %>%
   summarise(sum_pkg = sum(delivery_pkgs_all,na.rm = TRUE),
             sum_groc = sum(delivery_grocery_all,na.rm = TRUE),
             sum_food = sum(delivery_food_all,na.rm = TRUE) ) %>% 
-  mutate(delivery = if_else(sum_pkg > 0 | sum_groc > 0 | sum_food > 0 , 1, 0)) %>% 
-  select(hhid, delivery) 
+  mutate(delivery = if_else(sum_pkg > 0 | sum_groc > 0 | sum_food > 0 , 1, 0))
 
-sql.query <- paste("SELECT * FROM HHSurvey.v_households_2017_2019_public")
+sql.query <- paste("SELECT * FROM HHSurvey.v_households_2017_2019_in_house")
 hh = read.dt(sql.query, 'sqlquery')
 
-hh_join_deliv = left_join(hh, day_household , by = c("hhid" = "hhid"))
-                                                                
-
-#days_parcels<-merge(day_dt, parcels, by.x='final_home_parcel_dim_id', by.y='parcelid')
-
-hh_join_deliv[sapply(hh_join_deliv, is.character)] <- lapply(hh_join_deliv[sapply(hh_join_deliv, is.character)], as.factor)
+hh_join_deliv = merge(hh, day_household , by.x='household_id', by.y='hhid')
 
 
-deliver<-glm(delivery~ 0+hhincome_broad+hhsize,
+
+hh_join_deliv$no_vehicles= 
+  with(hh_join_deliv,ifelse(vehicle_count =='0 (no vehicles)', 'No vehicles', 'Has vehicles')) 
+
+#hh_join_deliv[sapply(hh_join_deliv, is.character)] <- lapply(hh_join_deliv[sapply(hh_join_deliv, is.character)], as.factor)
+ 
+hh_join_deliv$new_inc_grp<-hh_join_deliv$hhincome_detailed
+
+
+hh_join_deliv$new_inc_grp[hh_join_deliv$hhincome_broad=='Under $25,000'] <- 'Under $25,000'
+hh_join_deliv$new_inc_grp[hh_join_deliv$hhincome_broad=="$25,000-$49,999"] <- '$25,000-$49,999'
+hh_join_deliv$new_inc_grp[hh_join_deliv$hhincome_detailed== '$200,000-$249,999'] <- '$200,000+'
+hh_join_deliv$new_inc_grp[hh_join_deliv$hhincome_detailed== '$250,000 or more'] <- '$200,000+'
+
+hh_join_deliv$hhsize_grp <- hh_join_deliv$hhsize
+hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='5 people'] <- '5+ people'
+hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='6 people'] <- '5+ people'
+hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='7 people'] <- '5+ people'
+hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='8 people'] <- '5+ people'
+hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='9 people'] <- '5+ people'
+
+
+deliver<-glm(delivery~ new_inc_grp+no_vehicles+hhsize_grp,
                    data=hh_join_deliv,
                     family = 'binomial')
 
 
-summary(deliver, correlation= TRUE, family = 'binomial')
+summary(deliver, correlation= FALSE, family = 'binomial')
 
+glmOut(deliver, 'C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/simple_delivery_model.csv')
 
 
 PseudoR2(deliver, c("McFadden", "Nagel"))
