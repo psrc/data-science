@@ -155,7 +155,13 @@ shop_trip_per_hh = d_shop %>%
   group_by(hhid) %>% 
   summarise(n = n(), weight_comb = sum(trip_wt_combined*shop_trip ))
 
-sum(shop_trip_per_hh$weight_comb)/sum(days$hh_day_wt_combined)
+#in the denominator we will need to have a number of all households in the region
+
+days_hh_weight = days %>% group_by(hhid) %>% slice(which.max(hh_wt_combined))
+
+sum(shop_trip_per_hh$weight_comb)/sum(days_hh_weight$hh_wt_combined)
+
+
 
 # Socio-economic characteristics of people who went shopping 
 
