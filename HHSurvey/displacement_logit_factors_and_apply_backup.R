@@ -391,7 +391,7 @@ movers_coded$person_race_code<-recode(movers_coded$person_race_code, "3" = "5", 
 # New table with only new variables for joining to the household table
 hh_cat <- movers_coded %>% 
           group_by(household_id) %>% 
-          summarize(hh_race_code = paste0(person_race_code, collapse = "")) # create a household race code with integer codes of all persons in household
+          summarise(hh_race_code = paste0(person_race_code, collapse = "")) # create a household race code with integer codes of all persons in household
  
 hh_cat$hh_race <- case_when( # using a grep function to create household race category based on integer codes
   grepl("9", hh_cat$hh_race_code) ~ "Missing",
@@ -468,5 +468,10 @@ prediction <- pred %>% mutate(simulated_displacement= rbinom(length(pred$predict
 hh_income_pred<-prediction %>% group_by(hhincome_mrbroad, simulated_displacement) %>% tally()
 hh_race_pred<-prediction %>% group_by(hh_race_poc, simulated_displacement) %>% tally()
 displacement_block_group<-prediction %>% group_by(census_2010_block_group_id, simulated_displacement) %>% tally()
-displacement_block_group_wide<-displacement_block_group %>% pivot_wider(names_from = c(census_2010_block_group_id,n), values_from = simulated_displacement)
-# rent_or_not
+displacement_block_group_wide<-displacement_block_group %>% pivot_wider(
+                              names_from=simulated_displacement, values_from=n)
+
+
+
+write.csv(displacement_block_group_wide,"C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/estimation_displace/displacement_simulation.csv")
+
