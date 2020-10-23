@@ -130,8 +130,6 @@ trips = read.dt(sql.query, 'sqlquery')
 
 
 d_shop = trips[trips$d_purp_cat == "Shop",]
-o_shop = trips[trips$o_purp_cat == "Shop",]
-
 
 #loading day table
 
@@ -151,7 +149,7 @@ sum(d_shop$trip_wt_combined)/sum(days$hh_day_wt_combined)
 shop_trip_per_hh = d_shop %>%
   #first, we have to filter the trip data where travelers_hh are missing
   filter(travelers_hh > 0, travelers_hh < 20) %>% 
-  mutate(shop_trip = if_else(d_purp_cat == "Shop", 1/travelers_hh,0)) %>% 
+  mutate(shop_trip = 1/travelers_hh) %>% 
   group_by(hhid) %>% 
   summarise(n = n(), weight_comb = sum(trip_wt_combined*shop_trip ))
 
@@ -173,13 +171,20 @@ hh_shopping_join = d_shop %>% left_join(household, by = c("hhid" = "hhid") )
 
 #adding a shopping trip weight for a household
 hh_shopping_join = hh_shopping_join %>% 
-  mutate(shop_trip = if_else(d_purp_cat == "Shop", 1/travelers_hh,0))
+  filter(travelers_hh > 0, travelers_hh < 20) %>% 
+  mutate(shop_trip = 1/travelers_hh)
 
 #join days and household
+#since we are gonna create an analysis on the household level, need to use days_hh_weight
 
-hh_days = merge(days, household, by.x='hhid', by.y='hhid')
+hh_days = merge(days_hh_weight, household, by.x='hhid', by.y='hhid')
 
-#income
+#sum of hh-days weight should give us number of households in the region
+
+sum(hh_days$hh_wt_combined.x)
+
+
+#income - household
 
 shop_trips_income = hh_shopping_join %>% 
                     group_by(hhincome_broad) %>% 
@@ -189,7 +194,7 @@ shop_trips_income = hh_shopping_join %>%
 
 
 person_day_income <- hh_days %>% group_by(hhincome_broad) %>%
-  summarise(n=n(), day_combined = sum(hh_day_wt_combined.x))
+  summarise(n=n(), day_combined = sum(hh_days$hh_wt_combined.x))
 
 day_shop_trips_income <- merge(shop_trips_income, person_day_income, by.x = 'hhincome_broad', by.y = 'hhincome_broad')
 day_shop_trips_income %>% mutate(trip_rate = sum_wt_comb/day_combined) %>% select(hhincome_broad,trip_rate)
@@ -206,7 +211,7 @@ shop_trips_hhsize = hh_shopping_join %>%
 
 
 person_day_hhsize <- hh_days %>% group_by(hhsize) %>%
-  summarise(n=n(), day_combined = sum(hh_day_wt_combined.x))
+  summarise(n=n(), day_combined = sum(hh_days$hh_wt_combined.x))
 
 day_shop_trips_hhsize <- merge(shop_trips_hhsize, person_day_hhsize, by.x = 'hhsize',by.y = 'hhsize')
 day_shop_trips_hhsize %>% mutate(trip_rate = sum_wt_comb/day_combined) %>% select(hhsize,trip_rate)
@@ -269,10 +274,10 @@ day_household = day_upd %>% group_by(hhid) %>%
   mutate(delivery = if_else(sum_pkg > 0 | sum_groc > 0 | sum_food > 0 , 1, 0)) %>% 
   select(hhid, delivery)
 
-hh_shopping_join_deliv = left_join(hh_shopping_join, day_household , by = c("hhid" = "hhid")) 
+#hh_shopping_join is shopping trips table joined with hh table. this table also have shopping trip weights created before
+#day_household is day table grouped by household that have delivery variable
 
-#check the weights
-sum(day_hh_join$hh_wt_combined)
+hh_shopping_join_deliv = left_join(hh_shopping_join, day_household , by = c("hhid" = "hhid")) 
 
 
 #if hh received delivery or not
@@ -284,8 +289,10 @@ shop_trips_delivery = hh_shopping_join_deliv %>%
   ungroup() %>%  mutate(MOE=z*(p_MOE/sum(n))^(1/2)*100)
 
 
-person_day_delivery <- day_upd %>% group_by(delivery) %>%
-  summarise(n=n(), day_combined = sum(hh_day_wt_combined))
+hh_days_w_deliv = left_join(hh_days,day_household, by = c("hhid" = "hhid"))
+
+person_day_delivery <- hh_days_w_deliv %>% group_by(delivery) %>%
+  summarise(n=n(), day_combined = sum(sum(hh_days_w_deliv$hh_wt_combined.x)))
 
 day_shop_trips_delivery <- merge(shop_trips_delivery, person_day_delivery, by = 'delivery')
 day_shop_trips_delivery %>% mutate(trip_rate = sum_wt_comb/day_combined) %>% select(delivery,trip_rate)
