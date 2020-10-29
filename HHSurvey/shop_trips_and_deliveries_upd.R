@@ -136,9 +136,25 @@ d_shop = trips[trips$d_purp_cat == "Shop",]
 sql.query <- paste("SELECT * FROM HHSurvey.v_days_2017_2019_public")
 days = read.dt(sql.query, 'sqlquery')
 
-#there are shopping trips per person per day
+#there are shopping trips per person per day combines
 
 sum(d_shop$trip_wt_combined)/sum(days$hh_day_wt_combined)
+
+#trend
+#2019 shopping trips per day
+sum(d_shop$trip_wt_2019)/sum(days$hh_day_wt_2019)
+#2017 shopping trips per day
+sum(d_shop$trip_weight_revised, na.rm = TRUE)/sum(days$hh_day_wt_revised, na.rm = TRUE)
+
+#number of shopping trips
+sum(d_shop$trip_wt_2019)
+sum(d_shop$trip_weight_revised, na.rm = TRUE)
+
+# % of total trips
+sum(d_shop$trip_wt_2019)/sum(trips$trip_wt_2019)*100
+sum(d_shop$trip_weight_revised, na.rm = TRUE)/sum(trips$trip_weight_revised, na.rm = TRUE)*100
+
+
 
 #shopping rate per household per day
 # to calculate household shopping trip rate, we need to know how many shopping trips were done per each household.
@@ -159,7 +175,31 @@ days_hh_weight = days %>% group_by(hhid) %>% slice(which.max(hh_wt_combined))
 
 sum(shop_trip_per_hh$weight_comb)/sum(days_hh_weight$hh_wt_combined)
 
+#trend
 
+#2019 shopping trips per day
+
+shop_trip_per_hh_2019 = d_shop %>%
+  #first, we have to filter the trip data where travelers_hh are missing
+  filter(travelers_hh > 0, travelers_hh < 20) %>% 
+  mutate(shop_trip = 1/travelers_hh) %>% 
+  group_by(hhid) %>% 
+  summarise(n = n(), weight_2019 = sum(trip_wt_2019*shop_trip ))
+#in the denominator we will need to have a number of all households in the region
+days_hh_weight_2019 = days %>% group_by(hhid) %>% slice(which.max(hh_wt_2019))
+sum(shop_trip_per_hh_2019$weight_2019)/sum(days_hh_weight_2019$hh_wt_2019)
+
+
+#2017 shopping trips per day
+shop_trip_per_hh_2017 = d_shop %>%
+  #first, we have to filter the trip data where travelers_hh are missing
+  filter(travelers_hh > 0, travelers_hh < 20) %>% 
+  mutate(shop_trip = 1/travelers_hh) %>% 
+  group_by(hhid) %>% 
+  summarise(n = n(), weight_2017 = sum(trip_weight_revised*shop_trip, na.rm = TRUE ))
+#in the denominator we will need to have a number of all households in the region
+days_hh_weight_2017 = days %>% group_by(hhid) %>% slice(which.max(hh_wt_revised))
+sum(shop_trip_per_hh_2017$weight_2017)/sum(days_hh_weight_2017$hh_wt_revised)
 
 # Socio-economic characteristics of people who went shopping 
 
@@ -187,19 +227,19 @@ sum(hh_days$hh_wt_combined.x)
 #income - household
 
 shop_trips_income = hh_shopping_join %>% 
-                    group_by(hhincome_broad) %>% 
+                    group_by(hhincome_detailed) %>% 
                     summarise(n=n(),sum_wt_comb = sum(trip_wt_combined * shop_trip)) %>% 
                     mutate(perc_comb = sum_wt_comb/sum(sum_wt_comb)*100) %>% 
                     ungroup() %>%  mutate(MOE=z*(p_MOE/sum(n))^(1/2)*100) %>% arrange(desc(perc_comb))
 
 
-person_day_income <- hh_days %>% group_by(hhincome_broad) %>%
+person_day_income <- hh_days %>% group_by(hhincome_detailed) %>%
   summarise(n=n(), day_combined = sum(hh_days$hh_wt_combined.x))
 
-day_shop_trips_income <- merge(shop_trips_income, person_day_income, by.x = 'hhincome_broad', by.y = 'hhincome_broad')
-day_shop_trips_income %>% mutate(trip_rate = sum_wt_comb/day_combined) %>% select(hhincome_broad,trip_rate)
+day_shop_trips_income <- merge(shop_trips_income, person_day_income, by.x = 'hhincome_detailed', by.y = 'hhincome_detailed')
+temp = day_shop_trips_income %>% mutate(trip_rate = sum_wt_comb/day_combined) %>% select(hhincome_detailed,trip_rate) %>% arrange(desc(trip_rate))
 
-
+write.csv(temp)
 
 #hh size
 
@@ -214,7 +254,7 @@ person_day_hhsize <- hh_days %>% group_by(hhsize) %>%
   summarise(n=n(), day_combined = sum(hh_days$hh_wt_combined.x))
 
 day_shop_trips_hhsize <- merge(shop_trips_hhsize, person_day_hhsize, by.x = 'hhsize',by.y = 'hhsize')
-day_shop_trips_hhsize %>% mutate(trip_rate = sum_wt_comb/day_combined) %>% select(hhsize,trip_rate)
+temp = day_shop_trips_hhsize %>% mutate(trip_rate = sum_wt_comb/day_combined) %>% select(hhsize,trip_rate)
 
 
 # Delivery analysis - selecting people that received deliveries =================================
@@ -277,10 +317,14 @@ day_household = day_upd %>% group_by(hhid) %>%
 #hh_shopping_join is shopping trips table joined with hh table. this table also have shopping trip weights created before
 #day_household is day table grouped by household that have delivery variable
 
-hh_shopping_join_deliv = left_join(hh_shopping_join, day_household , by = c("hhid" = "hhid")) 
+hh_shopping_join_deliv = left_join(hh_shopping_join, day_household, by = c("hhid" = "hhid")) 
+
+#household table joined with day_household (identification whatever delivery was reseived or not)
+
+hh_delivery = left_join(hh, day_household, by = c("hhid" = "hhid"))
 
 
-#if hh received delivery or not
+#if hh received delivery or not with shopping trips
 
 shop_trips_delivery = hh_shopping_join_deliv %>% 
   group_by(delivery) %>% 
@@ -295,7 +339,44 @@ person_day_delivery <- hh_days_w_deliv %>% group_by(delivery) %>%
   summarise(n=n(), day_combined = sum(sum(hh_days_w_deliv$hh_wt_combined.x)))
 
 day_shop_trips_delivery <- merge(shop_trips_delivery, person_day_delivery, by = 'delivery')
-day_shop_trips_delivery %>% mutate(trip_rate = sum_wt_comb/day_combined) %>% select(delivery,trip_rate)
+temp = day_shop_trips_delivery %>% mutate(trip_rate = sum_wt_comb/day_combined) %>% select(delivery,trip_rate)
 
 
+#if hh received delivery or not generally
+hh_delivery %>% 
+     group_by(delivery) %>% 
+     summarise(n=n(),sum_wt_comb = sum(hh_wt_combined)) %>% 
+     mutate(perc_comb = sum_wt_comb/sum(sum_wt_comb)*100) %>% 
+     ungroup() %>%  mutate(MOE=z*(p_MOE/sum(n))^(1/2)*100)
+
+#household joined with delivery
+
+#income
+delivery_income = hh_delivery %>% 
+  group_by(delivery,hhincome_detailed) %>% 
+  summarise(n=n(),sum_wt_comb = sum(hh_wt_combined)) %>% 
+  mutate(perc_comb = sum_wt_comb/sum(sum_wt_comb)*100)
+
+
+#hhsize
+delivery_hhsize = hh_delivery %>% 
+  group_by(delivery,hhsize) %>% 
+  summarise(n=n(),sum_wt_comb = sum(hh_wt_combined)) %>% 
+  mutate(perc_comb = sum_wt_comb/sum(sum_wt_comb)*100)
+
+
+
+#delivery trend
+
+day_household_full = day_household %>% left_join(hh, by = "hhid") 
+
+#2019
+day_household_full %>% filter(hh_wt_2019 > 0) %>% group_by(delivery) %>% 
+  summarise(n = n(), weight_2019 = sum(hh_wt_2019 )) %>% 
+  mutate(delivery_share = weight_2019/sum(weight_2019)*100)
+
+#2017
+day_household_full %>% filter(hh_wt_revised > 0) %>% group_by(delivery) %>% 
+  summarise(n = n(), weight_2017 = sum(hh_wt_revised)) %>% 
+  mutate(delivery_share = weight_2017/sum(weight_2017)*100)
 
