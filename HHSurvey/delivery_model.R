@@ -65,7 +65,7 @@ glmOut <- function(res, file=out_file, ndigit=3, writecsv=T) {
 
 
 got_delivery<-function(column_name){
-  ifelse(((column_name!='0 (none)') & (column_name!= 'No')),
+  ifelse(((column_name!='0 (none)') & (column_name!= 'No') & (column_name !='Missing: Non-response') &column),
          1, 0)
 }
 
@@ -77,7 +77,9 @@ day_dt<-read.dt(dbtable.day.query, 'tablename')
 day_dt$any_delivery<-0
 hh_day_dt<-day_dt %>%
   group_by(hhid) %>%
-  filter(!is.na(deliver_package)|!is.na(delivery_pkgs_freq))
+  filter(!is.na(deliver_package)|!is.na(delivery_pkgs_freq)) %>%
+  filter((delivery_pkgs_freq!="Missing: Skip logic" | deliver_package!="Missing: Skip logic" )
+         & ((deliver_package !='Missing: Non-response'| delivery_pkgs_freq!='Missing: Skip logic')))
 
 
 #parcels <- read.csv('C:/Users/SChildress/Documents/HHSurvey/displace_estimate/buffered_parcels.txt', sep= ' ')
@@ -91,6 +93,8 @@ hh_day_deliver<-
   hh_day_deliver%>% dplyr::mutate_at(vars(starts_with('deliver')), funs(got_delivery(.)))
          
 #there has to be a better way to do this.
+
+
 hh_day_deliver<-hh_day_deliver%>% mutate(any_delivery= ifelse(delivery_pkgs_freq>0|
                                                               delivery_food_freq>0|
                                                               delivery_grocery_freq>0|

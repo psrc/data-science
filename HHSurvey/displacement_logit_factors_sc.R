@@ -1,3 +1,4 @@
+
 # You will probably need to install a few libraries to get this to work.
 library(data.table)
 library(tidyverse)
@@ -13,7 +14,7 @@ library(jtools)
 library(ggstance)
 library(sjPlot)
 library(effects)
-
+library(DescTools)
 
 #The codebook is checked in with these code files, named Combined_Codebook_022020.xlsx
 
@@ -23,23 +24,28 @@ library(effects)
 # in poverty, coming from the displacement risk analysis work.
 # it is checked in on github. You will need to point this variable to where it is
 # on your computer.
-displ_index_data<- 'C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/displacement_risk_estimation.csv'
+displ_index_data<- 'J:/Projects/Surveys/HHTravel/Survey2019/Analysis/displacement/estimation_files/displacement_risk_estimation.csv'
 
 # This commented out file contains very detailed information about parcels.  For example,
 # it contains information for each parcel about the number of jobs within a half mile.
 # It is nearly 1 GB. You may wish to move this file locally for speed reasons. This is 2018 parcel data
-parcel_data<- 'C:/Users/SChildress/Documents/HHSurvey/displace_estimate/buffered_parcels.txt'
+#parcel_data<- 'C:/Users/SChildress/Documents/HHSurvey/displace_estimate/buffered_parcels.txt'
 # I've moved my locally, as you can see:
-#parcel_data <- 'C:/Users/SChildress/Documents/HHSurvey/displace_estimate/buffered_parcels.dat'
+parcel_data <- 'C:/Users/SChildress/Documents/HHSurvey/displace_estimate/buffered_parcels.dat'
 
 #add updated hh race and age variables
 hh_race_age_cat = read.csv("C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/hh_race_age_categ.csv")
+
+acs_rent_inc = read.csv("C:/Users/SChildress/Documents/HHSurvey/displace_estimate/acs_income_rent_2018.csv")
+
+
+housing_policy<-read.xlsx("C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/estimation_displace/housing_policy_city.xlsx")
 
 ## Read person-displacement data from Elmer, other travel survey data as well
 db.connect <- function() {
   elmer_connection <- dbConnect(odbc(),
                                 driver = "SQL Server",
-                                server = "AWS-PROD-SQL\\COHO",
+                                server = "AWS-PROD-SQL\\SOCKEYE",
                                 database = "Elmer",
                                 trusted_connection = "yes"
   )
@@ -57,7 +63,7 @@ read.dt <- function(astring, type =c('table_name', 'sqlquery')) {
 }
 
 
-dbtable.person.query<- paste("SELECT *  FROM HHSurvey.v_persons_2017_2019_displace_estimation")
+dbtable.person.query<- paste("SELECT *  FROM HHSurvey.v_persons_2017_2019_displace_estimation_2014parcels")
 person_dt<-read.dt(dbtable.person.query, 'tablename')
 displ_risk_df <- read.csv(displ_index_data)
 parcel_df<-read.table(parcel_data, header=TRUE, sep='')
@@ -103,13 +109,24 @@ for (factor in res_factors){
 }
 
 
+housing_policy[is.na(housing_policy)]<-0
+housing_policy[housing_policy=='x']<-1
 
+person_df <- merge(person_df, housing_policy, by.x='city_name', by.y='Jurisdiction', all.x=TRUE)
 
 
 # Joining the person data to census tract and parcel-based land use data
 #prev_home_taz_2010
 person_df$census_2010_tract <- as.character(person_df$census_2010_tract)
 person_df_dis <- merge(person_df,displ_risk_df, by.x='census_2010_tract', by.y='GEOID', all.x=TRUE)
+
+acs_rent_inc$GEOID10<- as.character(acs_rent_inc$GEOID10)
+
+person_df_dis <- merge(person_df_dis,acs_rent_inc, by.x='census_2010_tract', by.y='GEOID10', all.x=TRUE )
+
+
+
+
 # a list of parcel -based variables I'd like to try in the model, there are more on the file
 parcel_based_vars<-c('hh_2', 'stugrd_2', 'stuhgh_2', 'stuuni_2', 'empedu_2', 'empfoo_2', 'empgov_2', 'empind_2',
                       'empmed_2', 'empofc_2', 'empret_2', 'empsvc_2', 'emptot_2', 'ppricdy2', 'pprichr2',
@@ -118,12 +135,12 @@ parcel_based_vars<-c('hh_2', 'stugrd_2', 'stuhgh_2', 'stuuni_2', 'empedu_2', 'em
 
 person_df_dis$census_2010_tract <- as.character(person_df$census_2010_tract)
 
-#changed to prev parcel 2018
 
-person_df_dis$parcel_id <- as.character(person_df_dis$prev_home_2018_parcel)
+
+person_df_dis$parcel_id <- as.character(person_df_dis$prev_home_parcel_id)
 parcel_df$parcelid <- as.character(parcel_df$parcelid)
 #merging by the previous residence parcel from the person table and by the parcel id in the parcel table
-person_df_dis_parcel<- merge(person_df_dis, parcel_df, by.x='prev_home_2018_parcel', by.y='parcelid', all.x = TRUE)
+person_df_dis_parcel<- merge(person_df_dis, parcel_df, by.x='parcel_id', by.y='parcelid', all.x = TRUE)
 
 
 
@@ -143,20 +160,22 @@ vars_to_consider <- c('displaced','hh_any_older', 'hh_has_children',"nonwhite","
                       "severe_cost_burdened","poverty_200"	, 'seattle_home',
                       "ln_jobs_auto_30", "ln_jobs_transit_45", "transit_qt_mile","transit_2025_half",
                        "dist_super", "dist_pharm", "dist_rest","dist_park.x",	"dist_school",
-                      "prox_high_inc",	"at_risk_du","voting",
+                      "prox_high_inc",	"at_risk_du","voting",'hhincome_detailed',
                       'displaced', "hhincome_broad", 'race_category', 'education', 'age',
                       'age_category', 'numchildren', 'numadults', 'numworkers','lifecycle','prev_rent_own',
                       'prev_res_type','hhincome_detailed','res_dur', 'hhsize',
-                      'vehicle_count', 'student', 'license','age_category', 'seattle_home'
-                      ## This needs to be updated: with latest small area table'city_name', 'growth_center_name',
+                      'vehicle_count', 'student', 'license','age_category', 'seattle_home', 'city_name', 'growth_center_name',
                       'hh_2', 'stugrd_2', 'stuhgh_2', 'stuuni_2', 'empedu_2', 'empfoo_2', 'empgov_2', 'empind_2',
                       'empmed_2', 'empofc_2', 'empret_2', 'empsvc_2', 'emptot_2', 'ppricdy2', 'pprichr2',
                       'tstops_2', 'nparks_2', 'aparks_2', 'dist_lbus', 'dist_ebus', 'dist_crt', 'dist_fry',
-                      'dist_lrt','hh_race', 'hh_age')
+                      'dist_lrt','hh_race', 'hh_age',
+                      'Percent.Less.than.10K', "Percent.Less.than.25K",  "Percent.Less.than.50K",  
+                      "Percent.50K..100K",    "Percent.Above.100K" ,  "Percent.Above.150K",  "Percent.Above.200K",    
+                      "Median.household.income", "LN.Median.Income","Median.Rent" )
 
 
 
-person_df_dis_sm <-person_df_dis_parcel[vars_to_consider]
+#person_df_dis_sm <-person_df_dis_parcel[vars_to_consider]
 
 
 ################# variable aggregations and transformations
@@ -174,11 +193,11 @@ person_df_dis_sm$rent_or_not=
 
 
 # This data needs to be updated to 2018
-#person_df_dis_sm$seattle= 
-#  with(person_df_dis_sm,ifelse(city_name=='Seattle', 'Seattle', 'Not Seattle')) 
+person_df_dis_sm$seattle= 
+  with(person_df_dis_sm,ifelse(city_name=='Seattle', 'Seattle', 'Not Seattle')) 
 
-#person_df_dis_sm$rgc= 
-#  with(person_df_dis_sm,ifelse(growth_center_name!='', 'rgc', 'not_rgc'))
+person_df_dis_sm$rgc= 
+  with(person_df_dis_sm,ifelse(growth_center_name!='', 'rgc', 'not_rgc'))
 
 
 person_df_dis_sm$sf_house<-with(person_df_dis_sm,ifelse(prev_res_type == 'Single-family house (detached house)', 'Single Family House', 'Not Single Family House'))
@@ -198,13 +217,13 @@ person_df_dis_sm$age_group=
 person_df_dis_sm$moved_lst_yr= 
   with(person_df_dis_sm,ifelse(res_dur=='Less than a year', 'Moved Last Year', 'Moved 1-5 years ago'))
 
-person_df_dis_sm$hhincome_mrbroad <- person_df_dis_sm$hhincome_broad
+person_df_dis_sm$hhincome_mrbroad <- person_df_dis_sm$hhincome_detailed
 #person_df_dis_sm$hhincome_mrbroad[person_df_dis_sm$hhincome_broad== 'Prefer not to answer']<-'100,000-$149,999'
 person_df_dis_sm$hhincome_mrbroad[person_df_dis_sm$hhincome_broad== '$25,000-$49,999']<-'25,000-$99,999'
 person_df_dis_sm$hhincome_mrbroad[person_df_dis_sm$hhincome_broad== '$50,000-$74,999']<-'25,000-$99,999'
 person_df_dis_sm$hhincome_mrbroad[person_df_dis_sm$hhincome_broad== '$75,000-$99,999']<-'25,000-$99,999'
-person_df_dis_sm$hhincome_mrbroad[person_df_dis_sm$hhincome_broad== '$100,000 or more'] <- '$100,000 or more/Prefer not to answer'
-person_df_dis_sm$hhincome_mrbroad[person_df_dis_sm$hhincome_broad== 'Prefer not to answer'] <- '$100,000 or more/Prefer not to answer'
+person_df_dis_sm$hhincome_mrbroad[person_df_dis_sm$hhincome_detailed== '$200,000-$249,999'] <- '$200,000+'
+person_df_dis_sm$hhincome_mrbroad[person_df_dis_sm$hhincome_detailed== '$250,000 or more'] <- '$200,000+'
 
 person_df_dis_sm$dist_prem_bus<-pmin(person_df_dis_sm$dist_ebus, person_df_dis_sm$dist_fry, person_df_dis_sm$dist_lrt)
 person_df_dis_sm$dist_bus<-pmin(person_df_dis_sm$dist_lbus,person_df_dis_sm$dist_ebus, person_df_dis_sm$dist_fry, person_df_dis_sm$dist_lrt)
@@ -229,28 +248,25 @@ person_df_dis_sm$hh_race_other =
 
 person_df_dis_sm[sapply(person_df_dis_sm, is.character)] <- lapply(person_df_dis_sm[sapply(person_df_dis_sm, is.character)], as.factor)
 
+person_df_dis_sm$Median.household.income = as.numeric(person_df_dis_sm$Median.household.income)
+person_df_dis_sm$Median.Rent= as.numeric(person_df_dis_sm$Median.Rent)
+person_df_dis_sm$sqrt_median_rent = sqrt(1+person_df_dis_sm$Median.Rent)
+person_df_dis_sm$sqrt_median_inc = sqrt(1+person_df_dis_sm$Median.household.income)
 
 
-# Variables to Try in the Model Fitting Below
-less_vars<-c('displaced', "hhincome_mrbroad",  
-            'rent_or_not',
-             'vehicle_group',
-            'hh_race_upd', 'hh_broad_age',
-             "no_bachelors", "dist_school", "prox_high_inc")
- 
-x_sm<-less_vars[!less_vars %in% "displaced"]
-person_df_ls<-person_df_dis_sm[less_vars]
-x_sm<-c(x_sm)
+displacement_variables=c('RA', 'SP', 'FR','RP','MHP','DM','NO')
 
+person_df_dis_sm[displacement_variables] <- lapply(person_df_dis_sm[displacement_variables], as.factor)
 
-# Estimate the model
-
-displ_logit<-glm(displaced ~. ,data=person_df_ls,
+displ_logit<-glm(displaced ~ hhincome_mrbroad+hh_broad_age+rent_or_not
+                 +vehicle_group+Percent.50K..100K+hh_race+RA+SP+FR+RP+MHP+DM+NO,
+                 data=person_df_dis_sm,
                  family = 'binomial')
-summary(displ_logit, correlation= TRUE)
 
 #https://cran.r-project.org/web/packages/jtools/vignettes/summ.html#effect_plot
 
 plot_summs(displ_logit, scale = TRUE)
 
-#https://towardsdatascience.com/visualizing-models-101-using-r-c7c937fc5f04
+PseudoR2(displ_logit, c("McFadden", "Nagel"))
+
+

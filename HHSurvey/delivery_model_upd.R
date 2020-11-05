@@ -143,7 +143,7 @@ hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='8 people'] <- '5+ people'
 hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='9 people'] <- '5+ people'
 
 
-deliver<-glm(delivery~ new_inc_grp+no_vehicles+hhsize_grp,
+deliver<-glm(delivery~ new_inc_grp+no_vehicles+hhsize_grp+,
                    data=hh_join_deliv,
                     family = 'binomial')
 
