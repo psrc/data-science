@@ -168,4 +168,13 @@ deliv_shop_trips <-deliv_joined_shop_trips2 %>% group_by(delivery) %>%
 # 0.988 shop trips for households with no deliveries
 # 1.15 shop trips for households with deliveries
 
+sql.query <- paste("SELECT * FROM HHSurvey.v_households_2017_2019_public")
+household = read.dt(sql.query, 'sqlquery')
+
+deliv_shop_trips_hh<- left_join(deliv_joined_shop_trips2, household, on = 'hhid')
+
+deliv_shop_trips_income <-deliv_shop_trips_hh %>% group_by(delivery,hhincome_detailed) %>%
+  summarise(shop_trip_sum=sum(trip_wt_no_na), delivery_day_sum=sum(day_wts)) %>%
+  mutate(shop_trip_rate_by_deliv= shop_trip_sum/delivery_day_sum)
+
 
