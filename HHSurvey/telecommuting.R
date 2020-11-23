@@ -206,11 +206,12 @@ days_telecom_ppl_weight = days_telecom %>%
 
 sum(telework_day_trips$trip_wt_combined,na.rm = TRUE)/sum(telework_day$hh_day_wt_combined)
 
+
 #by telework category
 
-ppl_groupby_cat = telework_day %>% group_by(telework_cat) %>% summarise( sum_ppl_wt = sum(hh_day_wt_combined))
+ppl_groupby_cat = telework_day %>% group_by(telework_cat) %>% summarise(n_pplday=n(), sum_ppl_wt = sum(hh_day_wt_combined))
 
-temp = telework_day_trips %>% group_by(telework_cat) %>% summarise( sum_wt_trip = sum(trip_wt_combined,na.rm = TRUE)) %>% 
+temp = telework_day_trips %>% group_by(telework_cat) %>% summarise(n_trips = n(), sum_wt_trip = sum(trip_wt_combined,na.rm = TRUE)) %>% 
   left_join(ppl_groupby_cat, by = "telework_cat") %>% mutate(trips_per_person = sum_wt_trip/sum_ppl_wt)
 
 write.csv(temp)
@@ -227,7 +228,7 @@ sum(telework_day_trips[telework_day_trips$dest_purpose_simple == 'Work',]$trip_w
 
 
 #by teleworking category
-temp = telework_day_trips %>% filter(dest_purpose_simple == "Work") %>% group_by(telework_cat) %>% summarise( sum_wt_trip = sum(trip_wt_combined,na.rm = TRUE)) %>% 
+temp = telework_day_trips %>% filter(dest_purpose_simple == "Work") %>% group_by(telework_cat) %>% summarise(n = n(), sum_wt_trip = sum(trip_wt_combined,na.rm = TRUE)) %>% 
   left_join(ppl_groupby_cat, by = "telework_cat") %>% mutate(trips_per_person = sum_wt_trip/sum_ppl_wt)
 write.csv(temp)
 
@@ -252,3 +253,22 @@ temp = trips_person %>% group_by(worker) %>% summarise(trip_wt = sum(trip_wt_com
 
 write.csv(temp)
 
+
+#not weighted counts
+
+fulltime_work_trips = telework_day_trips %>% filter(telework_cat == "Full-time or greater", dest_purpose_simple == 'Work') %>% 
+  group_by(personid) %>%
+  summarise(n = n(), wt_trips = sum(trip_wt_combined)) %>% arrange(desc(wt_trips))
+
+#distr of work trips for full time teleworkers
+temp = fulltime_work_trips %>% 
+  group_by(n) %>% summarise(num_trips_count = n())
+write.csv(temp)
+
+# number of full-time teleworkers (people count) - 
+temp = telework_day_trips %>% filter(telework_cat == "Full-time or greater") %>% 
+       select( personid, dayofweek.x, hh_day_wt_combined.x, trip_wt_combined)%>% 
+       group_by(personid) %>%
+       summarise(n = n(), wt_trips = sum(trip_wt_combined))
+df_unique = unique(temp$personid)
+length(df_unique)
