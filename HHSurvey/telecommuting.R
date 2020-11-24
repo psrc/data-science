@@ -258,17 +258,39 @@ write.csv(temp)
 
 fulltime_work_trips = telework_day_trips %>% filter(telework_cat == "Full-time or greater", dest_purpose_simple == 'Work') %>% 
   group_by(personid) %>%
-  summarise(n = n(), wt_trips = sum(trip_wt_combined)) %>% arrange(desc(wt_trips))
+  summarise(n = n(), wt_trips = sum(trip_wt_combined), wt_ppl_day = sum(hh_day_wt_combined.x)) %>% arrange(desc(n))
 
 #distr of work trips for full time teleworkers
 temp = fulltime_work_trips %>% 
-  group_by(n) %>% summarise(num_trips_count = n())
+  group_by(n) %>% summarise(num_trips_count = n(), weighted_tr = sum(wt_trips), wt_ppl_day = sum(wt_ppl_day))
 write.csv(temp)
 
 # number of full-time teleworkers (people count) - 
 temp = telework_day_trips %>% filter(telework_cat == "Full-time or greater") %>% 
-       select( personid, dayofweek.x, hh_day_wt_combined.x, trip_wt_combined)%>% 
+       select( personid, dayofweek.x, hh_day_wt_combined.x, trip_wt_combined,hh_day_wt_combined.x)%>% 
        group_by(personid) %>%
-       summarise(n = n(), wt_trips = sum(trip_wt_combined))
+       summarise(n = n(), wt_trips = sum(trip_wt_combined), wt_ppl_day = sum(hh_day_wt_combined.x))
 df_unique = unique(temp$personid)
 length(df_unique)
+#weighted for people-day
+sum(temp$wt_ppl_day,na.rm = TRUE)
+
+#weighted for trips
+sum(temp$wt_trips,na.rm = TRUE)
+
+#Distr of # of work trips for non telecommuters
+
+work_trips = no_telework_day_trips %>% filter(dest_purpose_simple == 'Work') %>% 
+  group_by(personid) %>%
+  summarise(n = n(), wt_ppl_day = sum(hh_day_wt_combined.x)) %>% 
+  group_by(n) %>% summarise(num_trips_count = n(), wt_ppl_day = sum(wt_ppl_day))
+write.csv(work_trips)
+
+temp = no_telework_day_trips %>% #filter(telework_cat == "Full-time or greater") %>% 
+  select( personid, dayofweek.x, hh_day_wt_combined.x, trip_wt_combined,hh_day_wt_combined.x)%>% 
+  group_by(personid) %>%
+  summarise(n = n(), wt_trips = sum(trip_wt_combined), wt_ppl_day = sum(hh_day_wt_combined.x))
+df_unique = unique(temp$personid)
+length(df_unique)
+#weighted for people-day
+sum(temp$wt_ppl_day,na.rm = TRUE)
