@@ -119,6 +119,9 @@ trips_telework_ft = merge(workers_telework_time_days_ft, trips, by.x = c("person
                        by.y=c("personid", 'daynum'))
 sum(trips_telework_ft$trip_wt_combined)
 
+#eliminate outliers
+# went to primary work place
+# distribution
 
 work_trips = trips %>% filter(d_purp_cat == 'Work')
 
@@ -134,5 +137,28 @@ sum(work_trips_telework$trip_wt_combined)
 work_trips_telework_ft = merge(workers_telework_time_days_ft, work_trips, by.x = c("person_id", "daynum"),
                           by.y=c("personid", 'daynum'))
 sum(work_trips_telework_ft$trip_wt_combined)
+
+driver_trips = trips %>% filter(driver == 'Driver')
+
+
+driver_trips_no_telework = merge(workers_no_telework_time_days, driver_trips, by.x = c("person_id", "daynum"),
+                               by.y=c("personid", 'daynum'))
+driver_trips_no_telework$weighted_distance=driver_trips_no_telework$trip_wt_combined*driver_trips_no_telework$trip_path_distance
+driver_trips_no_telework=driver_trips_no_telework%>% replace(is.na(.), 0)
+
+
+sum(driver_trips_no_telework$weighted_distance)
+
+#53034076
+
+driver_trips_telework_ft= merge(workers_telework_time_days_ft, driver_trips, by.x = c("person_id", "daynum"),
+                                 by.y=c("personid", 'daynum'))
+driver_trips_telework_ft$weighted_distance=driver_trips_telework_ft$trip_wt_combined*driver_trips_telework_ft$trip_path_distance
+driver_trips_telework_ft=driver_trips_telework_ft%>% replace(is.na(.), 0)
+
+
+sum(driver_trips_telework_ft$weighted_distance)
+
+
 
 
