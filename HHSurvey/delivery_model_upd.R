@@ -14,6 +14,7 @@ library(sjPlot)
 library(effects)
 library(dplyr)
 library(DescTools)
+library(stargazer)
 
 
 db.connect <- function() {
@@ -64,6 +65,7 @@ glmOut <- function(res, file=out_file, ndigit=3, writecsv=T) {
 }
 
 
+# Read in day table, make a new field for delivery or not
 
 dbtable.day.query<- paste("SELECT *  FROM HHSurvey.v_days_2017_2019_in_house")
 day_dt<-read.dt(dbtable.day.query, 'tablename')
@@ -109,18 +111,29 @@ day_upd = day_dt %>%
 # we need to group by hhid. Another reason to group by hhid is
 # rMove respondents were asked to report # of deliveries received each day
 
-day_household = day_upd %>% group_by(hhid, day_id) %>%
+day_household= day_upd %>% group_by(hhid, daynum) %>%
   summarise(sum_pkg = sum(delivery_pkgs_all,na.rm = TRUE),
             sum_groc = sum(delivery_grocery_all,na.rm = TRUE),
-            sum_food = sum(delivery_food_all,na.rm = TRUE) ) %>% 
+            sum_food = sum(delivery_food_all,na.rm = TRUE),
+            day_wts_2019 = first(hh_day_wt_2019)) %>% 
+  mutate(sum_pkg_upd = case_when(sum_pkg == 0 ~ 0,
+                                 sum_pkg > 0 ~ 1),
+         sum_groc_upd = case_when(sum_groc == 0 ~ 0,
+                                  sum_groc > 0 ~ 1),
+         sum_food_upd = case_when(sum_food == 0 ~ 0,
+                                  sum_food > 0 ~ 1)) %>%
   mutate(delivery = if_else(sum_pkg > 0 | sum_groc > 0 | sum_food > 0 , 1, 0))
 
+
+
+# now join the households table to the day table so we can get demographic information
 sql.query <- paste("SELECT * FROM HHSurvey.v_households_2017_2019_in_house")
 hh = read.dt(sql.query, 'sqlquery')
 
 hh_join_deliv = merge(hh, day_household , by.x='household_id', by.y='hhid')
 
 
+# Do some computations on the household variables
 
 hh_join_deliv$no_vehicles= 
   with(hh_join_deliv,ifelse(vehicle_count =='0 (no vehicles)', 'No vehicles', 'Has vehicles')) 
@@ -136,15 +149,54 @@ hh_join_deliv$new_inc_grp[hh_join_deliv$hhincome_detailed== '$200,000-$249,999']
 hh_join_deliv$new_inc_grp[hh_join_deliv$hhincome_detailed== '$250,000 or more'] <- '$200,000+'
 
 hh_join_deliv$hhsize_grp <- hh_join_deliv$hhsize
+
+hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='3 people'] <- '3-4 people'
+hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='4 people'] <- '3-4 people'
 hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='5 people'] <- '5+ people'
 hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='6 people'] <- '5+ people'
 hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='7 people'] <- '5+ people'
 hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='8 people'] <- '5+ people'
 hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='9 people'] <- '5+ people'
 
+# Count the number of shopping trips in each household,
+# join back to the table with deliveries and household information
 
-deliver<-glm(delivery~ new_inc_grp+no_vehicles+hhsize_grp+,
-                   data=hh_join_deliv,
+sql.query <- paste("SELECT * FROM HHSurvey.v_trips_2017_2019")
+trips = read.dt(sql.query, 'sqlquery')
+
+
+d_shop = trips[trips$d_purp_cat == "Shop",]
+
+shop_trip_per_hh = d_shop %>%
+  #first, we have to filter the trip data where travelers_hh are missing
+  filter(travelers_hh > 0, travelers_hh < 20) %>% 
+  mutate(shop_trip = 1/travelers_hh) %>% 
+  group_by(hhid,daynum) %>% 
+  summarise(n_shop_trips = n(), weight_comb = sum(trip_wt_combined*shop_trip ))
+
+
+
+deliv_joined_shop = left_join(hh_join_deliv,shop_trip_per_hh,  by = c("household_id" = "hhid", 
+                                                                              "daynum"="daynum")) 
+
+
+# put zeroes for households with no shopping trips
+deliv_joined_shop = deliv_joined_shop %>% mutate(n_shop_trips_0 = replace_na(n_shop_trips, 0))
+
+deliv_joined_shop$n_shop_trips_grp <- deliv_joined_shop$n_shop_trips_0
+deliv_joined_shop$n_shop_trips_grp[deliv_joined_shop$n_shop_trips_0==0] <- '0 hh shop trips'
+deliv_joined_shop$n_shop_trips_grp[deliv_joined_shop$n_shop_trips_0==1] <- '1 hh shop trips'
+deliv_joined_shop$n_shop_trips_grp[deliv_joined_shop$n_shop_trips_0>1] <- '2+ hh shop trips'
+
+deliv_joined_shop$has_children= 
+  with(deliv_joined_shop,ifelse(numchildren>=1, 'children', 'no children')) 
+
+deliv_joined_shop$wrker_group= 
+  with(deliv_joined_shop,ifelse(numworkers==0, 'no workers', 'are workers'))
+
+deliver<-glm(delivery~ new_inc_grp+no_vehicles+hhsize_grp+n_shop_trips_grp+has_children+
+               wrker_group+seattle_home,
+                   data=deliv_joined_shop,
                     family = 'binomial')
 
 
@@ -152,6 +204,8 @@ summary(deliver, correlation= FALSE, family = 'binomial')
 
 glmOut(deliver, 'C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/simple_delivery_model.csv')
 
+
+stargazer(deliver, type= 'text', out='C:/Users/SChildress/Documents/GitHub/travel-studies/2019/analysis/deliver_model.txt')
 
 PseudoR2(deliver, c("McFadden", "Nagel"))
 #https://cran.r-project.org/web/packages/jtools/vignettes/summ.html#effect_plot

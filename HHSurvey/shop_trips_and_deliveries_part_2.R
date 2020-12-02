@@ -1,6 +1,7 @@
+source('travel_survey_analysis_functions.R')
 #Household Travel Survey - Shopping trips and delivery analysis
 
-#Author: Polina Butrina
+#Author: Polina Butrina, Suzanne Childress
 
 #Analysis to-do: Trends in Shopping Trips Who is doing the deliveries; were is the distribution; shopping trip rates
 
@@ -13,27 +14,6 @@ library(openxlsx)
 library(odbc)
 library(DBI)
 library(Hmisc)
-
-# Functions ----------------------------------------------------------------
-
-
-## Read from Elmer
-
-# Statistical assumptions for margins of error
-p_MOE <- 0.5
-z<-1.645
-missing_codes <- c('Missing: Technical Error', 'Missing: Non-response', 
-                   'Missing: Skip logic', 'Children or missing', 'Prefer not to answer')
-
-# connecting to Elmer
-db.connect <- function() {
-  elmer_connection <- dbConnect(odbc(),
-                                driver = "SQL Server",
-                                server = "AWS-PROD-SQL\\Sockeye",
-                                database = "Elmer",
-                                trusted_connection = "yes"
-  )
-}
 
 
 # Analysis ----------------------------------------------------------------
@@ -52,36 +32,9 @@ db.connect <- function() {
 # * delivery_pkgs_freq (day) - Number of package deliveries on travel day
 # * delivery_work_freq (day) - Number of service deliveries on travel day
 
-# Trip analysis - selecting shopping trips =================================
-sql.query <- paste("SELECT * FROM HHSurvey.v_trips_2017_2019_public")
-trips = read.dt(sql.query, 'sqlquery')
-
-
-d_shop = trips[trips$d_purp_cat == "Shop",]
-
-#loading day table
 
 sql.query <- paste("SELECT * FROM HHSurvey.v_days_2017_2019_public")
 days = read.dt(sql.query, 'sqlquery')
-
-
-sum(d_shop$trip_wt_combined)
-# 2.28 million person shopping trips
-
-sum(d_shop$trip_wt_combined)/sum(days$hh_day_wt_combined)
-# 0.56 person shop trips per day
-
-
-shop_trip_per_hh = d_shop %>%
-  #first, we have to filter the trip data where travelers_hh are missing
-  filter(travelers_hh > 0, travelers_hh < 20) %>% 
-  mutate(shop_trip = 1/travelers_hh) %>% 
-  group_by(hhid,daynum) %>% 
-  summarise(n = n(), weight_comb = sum(trip_wt_combined*shop_trip ))
-
-sum(shop_trip_per_hh$weight_comb)
-#1.7 million household shopping trips
-
 
 
 day_upd = days %>% 
@@ -123,26 +76,98 @@ day_upd = days %>%
 # we need to group by hhid. Another reason to group by hhid is
 # rMove respondents were asked to report # of deliveries received each day
 
-day_household_2 = day_upd %>% group_by(hhid, daynum) %>%
+day_household= day_upd %>% group_by(hhid, daynum) %>%
   summarise(sum_pkg = sum(delivery_pkgs_all,na.rm = TRUE),
             sum_groc = sum(delivery_grocery_all,na.rm = TRUE),
             sum_food = sum(delivery_food_all,na.rm = TRUE),
-            day_wts = max(hh_day_wt_combined)) %>% 
-  #mutate(sum_pkg_upd = case_when(sum_pkg == 0 ~ 0,
-                                # sum_pkg > 0 ~ 1),
-  #       sum_groc_upd = case_when(sum_groc == 0 ~ 0,
-   #                               sum_groc > 0 ~ 1),
-    #     sum_food_upd = case_when(sum_food == 0 ~ 0,
-    #                              sum_food > 0 ~ 1)) %>% 
-  mutate(delivery = if_else(sum_pkg > 0 | sum_groc > 0 | sum_food > 0 , 1, 0)) %>% 
-  select(hhid, delivery,day_wts,daynum)
+            day_wts_2019 = first(hh_day_wt_2019)) %>% 
+  mutate(sum_pkg_upd = case_when(sum_pkg == 0 ~ 0,
+                                 sum_pkg > 0 ~ 1),
+         sum_groc_upd = case_when(sum_groc == 0 ~ 0,
+                                  sum_groc > 0 ~ 1),
+         sum_food_upd = case_when(sum_food == 0 ~ 0,
+                                  sum_food > 0 ~ 1)) %>%
+          mutate(delivery = if_else(sum_pkg > 0 | sum_groc > 0 | sum_food > 0 , 1, 0))
 
-hh_tot_by_deliv_day_wt<- day_household_2 %>% group_by(delivery) %>% 
-  summarise(household_deliver =sum(day_wts, na.rm=TRUE)) %>% 
-  mutate(perc_comb = household_deliver/sum(household_deliver)*100)
 
-write.csv(hh_tot_by_deliv_day_wt)
+hh_pkgs_2019<- day_household %>% group_by(sum_pkg_upd) %>% 
+  summarise(household_deliver =sum(day_wts_2019, na.rm=TRUE))
 
+write.table(hh_pkgs_2019, "clipboard", sep="\t")
+
+hh_groc_2019<- day_household %>% group_by(sum_groc_upd) %>% 
+  summarise(household_deliver =sum(day_wts_2019, na.rm=TRUE))
+
+write.table(hh_groc_2019, "clipboard", sep="\t")
+
+hh_food_2019<- day_household %>% group_by(sum_food_upd) %>% 
+  summarise(household_deliver =sum(day_wts_2019, na.rm=TRUE))
+
+write.table(hh_food_2019, "clipboard", sep="\t")
+
+#who gets deliveries?
+sql.query <- paste("SELECT * FROM HHSurvey.v_households_2017_2019")
+household = read.dt(sql.query, 'sqlquery')
+
+hh_delivery = left_join(day_household,household, by = c("hhid" = "hhid"))
+
+
+
+hh_delivery$no_vehicles= 
+  with(hh_delivery,ifelse(vehicle_count =='0 (no vehicles)', 'No vehicles', 'Has vehicles')) 
+
+#hh_delivery[sapply(hh_delivery, is.character)] <- lapply(hh_delivery[sapply(hh_delivery, is.character)], as.factor)
+
+hh_delivery$new_inc_grp<-hh_delivery$hhincome_detailed
+
+
+hh_delivery$new_inc_grp[hh_delivery$hhincome_broad=='Under $25,000'] <- 'Under $25,000'
+hh_delivery$new_inc_grp[hh_delivery$hhincome_broad=="$25,000-$49,999"] <- '$25,000-$49,999'
+hh_delivery$new_inc_grp[hh_delivery$hhincome_detailed== '$200,000-$249,999'] <- '$200,000+'
+hh_delivery$new_inc_grp[hh_delivery$hhincome_detailed== '$250,000 or more'] <- '$200,000+'
+
+hh_delivery$hhsize_grp <- hh_delivery$hhsize
+hh_delivery$hhsize_grp[hh_delivery$hhsize=='5 people'] <- '5+ people'
+hh_delivery$hhsize_grp[hh_delivery$hhsize=='6 people'] <- '5+ people'
+hh_delivery$hhsize_grp[hh_delivery$hhsize=='7 people'] <- '5+ people'
+hh_delivery$hhsize_grp[hh_delivery$hhsize=='8 people'] <- '5+ people'
+hh_delivery$hhsize_grp[hh_delivery$hhsize=='9 people'] <- '5+ people'
+
+
+hh_income_deliveries<-cross_tab_categorical(hh_delivery,'new_inc_grp', 'delivery','day_wts_2019')
+write.table(hh_income_deliveries, "clipboard", sep="\t")
+
+hh_size_deliveries<-cross_tab_categorical(hh_delivery,'hhsize_grp', 'delivery','day_wts_2019')
+write.table(hh_size_deliveries, "clipboard", sep="\t")
+
+# Trip analysis - selecting shopping trips =================================
+sql.query <- paste("SELECT * FROM HHSurvey.v_trips_2017_2019_public")
+trips = read.dt(sql.query, 'sqlquery')
+
+
+d_shop = trips[trips$d_purp_cat == "Shop",]
+
+#loading day table
+
+
+
+
+sum(d_shop$trip_wt_combined)
+# 2.28 million person shopping trips
+
+sum(d_shop$trip_wt_combined)/sum(days$hh_day_wt_combined)
+# 0.56 person shop trips per day
+
+
+shop_trip_per_hh = d_shop %>%
+  #first, we have to filter the trip data where travelers_hh are missing
+  filter(travelers_hh > 0, travelers_hh < 20) %>% 
+  mutate(shop_trip = 1/travelers_hh) %>% 
+  group_by(hhid,daynum) %>% 
+  summarise(n = n(), weight_comb = sum(trip_wt_combined*shop_trip ))
+
+sum(shop_trip_per_hh$weight_comb)
+#1.7 million household shopping trips
 
 #day_household_2 has as many rows as observed household days
 
