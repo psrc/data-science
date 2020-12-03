@@ -1,20 +1,19 @@
-"V1","V2","V3","V4","V5"
-"glm, delivery ~ new_inc_grp + no_vehicles + hhsize_grp + n_shop_trips_grp, binomial, deliv_joined_shop","AIC","Residual Deviance","Null deviance","McFadden/Nagel PseuedoR-Squared"
-"","18633.784858716","18603.784858716","19389.999383158",NA
-"","","","",""
-"","Estimate","Std. Error","z value","Pr(>|z|)"
-"(Intercept)"," -1.417","  0.052","-27.139","  0.000"
-"new_inc_grp$150,000-$199,999","  0.221","  0.065","  3.389","  0.001"
-"new_inc_grp$200,000+","  0.386","  0.063","  6.113","  0.000"
-"new_inc_grp$25,000-$49,999"," -0.370","  0.065"," -5.659","  0.000"
-"new_inc_grp$50,000-$74,999"," -0.252","  0.062"," -4.041","  0.000"
-"new_inc_grp$75,000-$99,999"," -0.151","  0.062"," -2.427","  0.015"
-"new_inc_grpPrefer not to answer"," -0.269","  0.076"," -3.523","  0.000"
-"new_inc_grpUnder $25,000"," -0.591","  0.083"," -7.149","  0.000"
-"no_vehiclesNo vehicles","  0.173","  0.050","  3.440","  0.001"
-"hhsize_grp2 people","  0.652","  0.044"," 14.796","  0.000"
-"hhsize_grp3 people","  0.787","  0.064"," 12.201","  0.000"
-"hhsize_grp4 people","  0.882","  0.075"," 11.776","  0.000"
-"hhsize_grp5+ people","  0.783","  0.132","  5.946","  0.000"
-"n_shop_trips_grp1 hh shop trips","  0.081","  0.045","  1.777","  0.076"
-"n_shop_trips_grp2+ hh shop trips","  0.104","  0.047","  2.184","  0.029"
+V1,V2,V3,V4,V5,
+"glm, delivery ~ new_inc_grp + no_vehicles + hhsize_grp + n_shop_trips_grp + seattle_home, binomial, deliv_joined_shop",AIC,Residual Deviance,Null deviance,McFadden/Nagel PseuedoR-Squared,
+,18624.31394,18596.31394,19389.99938,NA,
+,,,,,
+,,Estimate,Std. Error,z value,Pr(>|z|)
+,(Intercept),-1.367,0.055,-24.989,0
+1,"new_inc_grpUnder $25,000",-0.586,0.083,-7.088,0
+2,"new_inc_grp$25,000-$49,999",-0.368,0.065,-5.63,0
+3,"new_inc_grp$50,000-$74,999",-0.251,0.062,-4.017,0
+4,"new_inc_grp$75,000-$99,999",-0.144,0.062,-2.323,0.02
+5,"new_inc_grp$150,000-$199,999",0.217,0.065,3.331,0.001
+6,"new_inc_grp$200,000+",0.381,0.063,6.04,0
+7,new_inc_grpPrefer not to answer,-0.264,0.077,-3.445,0.001
+,no_vehiclesNo vehicles,0.134,0.052,2.59,0.01
+,hhsize_grp2 people,0.658,0.044,14.919,0
+,hhsize_grp3+ people,0.847,0.055,15.437,0
+,n_shop_trips_grp1 hh shop trips,0.082,0.045,1.808,0.071
+,n_shop_trips_grp2+ hh shop trips,0.109,0.047,2.292,0.022
+,seattle_homeHome not in Seattle,-0.114,0.038,-2.978,0.003

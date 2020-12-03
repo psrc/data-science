@@ -150,13 +150,13 @@ hh_join_deliv$new_inc_grp[hh_join_deliv$hhincome_detailed== '$250,000 or more'] 
 
 hh_join_deliv$hhsize_grp <- hh_join_deliv$hhsize
 
-hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='3 people'] <- '3-4 people'
-hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='4 people'] <- '3-4 people'
-hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='5 people'] <- '5+ people'
-hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='6 people'] <- '5+ people'
-hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='7 people'] <- '5+ people'
-hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='8 people'] <- '5+ people'
-hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='9 people'] <- '5+ people'
+hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='3 people'] <- '3+ people'
+hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='4 people'] <- '3+ people'
+hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='5 people'] <- '3+ people'
+hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='6 people'] <- '3+ people'
+hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='7 people'] <- '3+ people'
+hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='8 people'] <- '3+ people'
+hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='9 people'] <- '3+ people'
 
 # Count the number of shopping trips in each household,
 # join back to the table with deliveries and household information
@@ -194,8 +194,7 @@ deliv_joined_shop$has_children=
 deliv_joined_shop$wrker_group= 
   with(deliv_joined_shop,ifelse(numworkers==0, 'no workers', 'are workers'))
 
-deliver<-glm(delivery~ new_inc_grp+no_vehicles+hhsize_grp+n_shop_trips_grp+has_children+
-               wrker_group+seattle_home,
+deliver<-glm(delivery~ new_inc_grp+no_vehicles+hhsize_grp+n_shop_trips_grp+seattle_home,
                    data=deliv_joined_shop,
                     family = 'binomial')
 

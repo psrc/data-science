@@ -127,6 +127,9 @@ hh_delivery$new_inc_grp[hh_delivery$hhincome_detailed== '$200,000-$249,999'] <- 
 hh_delivery$new_inc_grp[hh_delivery$hhincome_detailed== '$250,000 or more'] <- '$200,000+'
 
 hh_delivery$hhsize_grp <- hh_delivery$hhsize
+
+hh_delivery$hhsize_grp[hh_delivery$hhsize=='3 people'] <- '3-4 people'
+hh_delivery$hhsize_grp[hh_delivery$hhsize=='4 people'] <- '3-4 people'
 hh_delivery$hhsize_grp[hh_delivery$hhsize=='5 people'] <- '5+ people'
 hh_delivery$hhsize_grp[hh_delivery$hhsize=='6 people'] <- '5+ people'
 hh_delivery$hhsize_grp[hh_delivery$hhsize=='7 people'] <- '5+ people'
@@ -139,67 +142,4 @@ write.table(hh_income_deliveries, "clipboard", sep="\t")
 
 hh_size_deliveries<-cross_tab_categorical(hh_delivery,'hhsize_grp', 'delivery','day_wts_2019')
 write.table(hh_size_deliveries, "clipboard", sep="\t")
-
-# Trip analysis - selecting shopping trips =================================
-sql.query <- paste("SELECT * FROM HHSurvey.v_trips_2017_2019_public")
-trips = read.dt(sql.query, 'sqlquery')
-
-
-d_shop = trips[trips$d_purp_cat == "Shop",]
-
-#loading day table
-
-
-
-
-sum(d_shop$trip_wt_combined)
-# 2.28 million person shopping trips
-
-sum(d_shop$trip_wt_combined)/sum(days$hh_day_wt_combined)
-# 0.56 person shop trips per day
-
-
-shop_trip_per_hh = d_shop %>%
-  #first, we have to filter the trip data where travelers_hh are missing
-  filter(travelers_hh > 0, travelers_hh < 20) %>% 
-  mutate(shop_trip = 1/travelers_hh) %>% 
-  group_by(hhid,daynum) %>% 
-  summarise(n = n(), weight_comb = sum(trip_wt_combined*shop_trip ))
-
-sum(shop_trip_per_hh$weight_comb)
-#1.7 million household shopping trips
-
-#day_household_2 has as many rows as observed household days
-
-deliv_joined_shop_trips = left_join(day_household_2,shop_trip_per_hh,  by = c("hhid" = "hhid", 
-                                                                              "daynum"="daynum")) 
-
-# there are nas because there are some household days without shopping trips? Is that why?
-# So I think we want the trip weights to be zero there?
-# I think I'm using a different weight than what Polina was summing
-deliv_joined_shop_trips2<-deliv_joined_shop_trips %>% dplyr::mutate(trip_wt_no_na = replace_na(weight_comb, 0))
-
-sum(deliv_joined_shop_trips2$day_wts)
-# 1.66 mill
-sum(deliv_joined_shop_trips2$trip_wt_no_na)
-# 1.72 mill
-sum(deliv_joined_shop_trips2$trip_wt_no_na)/sum(deliv_joined_shop_trips2$day_wts)
-#overall average shop trips per household 1.03 ?
-
-deliv_shop_trips <-deliv_joined_shop_trips2 %>% group_by(delivery) %>%
-  summarise(shop_trip_sum=sum(trip_wt_no_na), delivery_day_sum=sum(day_wts)) %>%
-  mutate(shop_trip_rate_by_deliv= shop_trip_sum/delivery_day_sum)
-
-# 0.988 shop trips for households with no deliveries
-# 1.15 shop trips for households with deliveries
-
-sql.query <- paste("SELECT * FROM HHSurvey.v_households_2017_2019_public")
-household = read.dt(sql.query, 'sqlquery')
-
-deliv_shop_trips_hh<- left_join(deliv_joined_shop_trips2, household, on = 'hhid')
-
-deliv_shop_trips_income <-deliv_shop_trips_hh %>% group_by(delivery,hhincome_detailed) %>%
-  summarise(shop_trip_sum=sum(trip_wt_no_na), delivery_day_sum=sum(day_wts)) %>%
-  mutate(shop_trip_rate_by_deliv= shop_trip_sum/delivery_day_sum)
-
 
