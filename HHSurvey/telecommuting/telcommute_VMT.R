@@ -143,35 +143,43 @@ sum(driver_trips_telework_ft$weighted_distance, na.rm = TRUE)
 
 #person miles traveled by mode for all people, workers who didn't telework, and workers who teleworked 6-12 hours
 
-all_ppl_miles = trips_filt %>% group_by(person_id,main_mode) %>% 
-  summarise(sum_trip_miles = sum(wt_distance)) %>% 
-  left_join(person, by = "person_id") %>% 
-  group_by(main_mode) %>% 
-  summarise(sum_wt_trips = sum(sum_trip_miles,na.rm = TRUE), sum_wt_ppl = sum(hh_wt_combined,na.rm = TRUE)) %>% 
-  mutate(all_ppl_mi_traveled =sum_wt_trips/sum_wt_ppl )
-write.csv(all_ppl_miles)
-#workers who didn't telework
-no_tele_ppl_miles = no_telework_day_trips %>% group_by(personid,main_mode) %>% 
-  summarise(sum_trip_miles = sum(wt_distance)) %>% 
-  left_join(person, by = c("personid" = "person_id")) %>% 
-  group_by(main_mode) %>% 
-  summarise(sum_wt_trips = sum(sum_trip_miles,na.rm = TRUE), sum_wt_ppl = sum(hh_wt_combined,na.rm = TRUE)) %>% 
-  mutate(all_ppl_mi_traveled =sum_wt_trips/sum_wt_ppl )
-write.csv(no_tele_ppl_miles)
-
-#workers who teleworked 6-12 hours
-ft_ppl_miles = full_time_telework %>% group_by(personid,main_mode) %>% 
-  summarise(sum_trip_miles = sum(wt_distance)) %>% 
-  left_join(person, by = c("personid" = "person_id")) %>% 
-  group_by(main_mode) %>% 
-  summarise(sum_wt_trips = sum(sum_trip_miles,na.rm = TRUE), sum_wt_ppl = sum(hh_wt_combined,na.rm = TRUE)) %>% 
-  mutate(all_ppl_mi_traveled =sum_wt_trips/sum_wt_ppl )
-write.csv(ft_ppl_miles)
-
-ft_ppl_miles = full_time_telework %>% group_by(personid,daynum,main_mode) %>% 
-  summarise(sum_trip_miles = sum(wt_distance), ppl_wt = sum(hh_day_wt_combined.x)) %>% 
+all_ppl_miles = trips_filt %>% 
+  right_join(days, by = c("person_id"="personid", "daynum")) %>% 
+  group_by(person_id,daynum,main_mode) %>% 
+  summarise(sum_trip_miles = sum(wt_distance), ppl_wt = sum(hh_day_wt_combined.y,na.rm = TRUE)) %>% 
   #left_join(person, by = c("personid" = "person_id")) %>% 
   group_by(main_mode) %>% 
   summarise(sum_wt_trips = sum(sum_trip_miles,na.rm = TRUE), sum_wt_ppl = sum(ppl_wt,na.rm = TRUE)) %>% 
   mutate(all_ppl_mi_traveled =sum_wt_trips/sum_wt_ppl )
+write.csv(all_ppl_miles)
+#workers who didn't telework
+no_tele_ppl_miles = no_telework_day_trips %>% group_by(personid,daynum,main_mode) %>% 
+  summarise(sum_trip_miles = sum(wt_distance), ppl_wt = sum(hh_day_wt_combined.x)) %>% 
+  #left_join(person, by = c("personid" = "person_id")) %>% 
+  group_by(main_mode) %>% 
+  summarise(sum_wt_trips = sum(sum_trip_miles,na.rm = TRUE), sum_wt_ppl = sum(ppl_wt,na.rm = TRUE)) %>% 
+  mutate(no_telework_ppl_mi_traveled =sum_wt_trips/sum_wt_ppl )
+write.csv(no_tele_ppl_miles)
+
+#workers who teleworked 6-12 hours
+
+ft_ppl_miles = full_time_telework %>% group_by(personid,daynum,main_mode) %>% 
+  summarise(n=n(),sum_trip_miles = sum(wt_distance), ppl_wt = sum(hh_day_wt_combined.x)) %>% 
+  #left_join(person, by = c("personid" = "person_id")) %>% 
+  group_by(main_mode) %>% 
+  summarise(sum_n= sum(n),sum_wt_trips = sum(sum_trip_miles,na.rm = TRUE), sum_wt_ppl = sum(ppl_wt,na.rm = TRUE),n_ppl = n()) %>% 
+  mutate(telework_ppl_mi_traveled =sum_wt_trips/sum_wt_ppl )
 write.csv(ft_ppl_miles)
+
+joined_ppl_miles = all_ppl_miles %>% 
+  left_join(no_tele_ppl_miles, by = "main_mode") %>% 
+  left_join(ft_ppl_miles, by = "main_mode") %>% 
+  select(main_mode, all_ppl_mi_traveled,no_telework_ppl_mi_traveled, telework_ppl_mi_traveled)
+write.csv(joined_ppl_miles)
+
+#closer look at bike travel for full-time teleworkers
+full_time_telework %>% 
+  filter(main_mode == "Bike") %>% 
+  group_by(dest_purpose_simple) %>% 
+  summarise(sum_miles =sum(wt_distance,na.rm = TRUE), sum_wt_ppl = sum(hh_day_wt_combined.x,na.rm = TRUE)) %>% 
+  mutate(telework_ppl_mi_traveled =sum_miles/sum_wt_ppl )
