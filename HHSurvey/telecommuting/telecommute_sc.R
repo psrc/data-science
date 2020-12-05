@@ -10,6 +10,7 @@ library(stringr)
 library(lubridate)
 library(sqldf)
 library(stargazer)
+library(spatstat)
 
 # connecting to Elmer
 db.connect <- function() {
@@ -138,18 +139,68 @@ work_trips_telework_ft = merge(workers_telework_time_days_ft, work_trips, by.x =
                           by.y=c("personid", 'daynum'))
 sum(work_trips_telework_ft$trip_wt_combined)
 
-driver_trips = trips %>% filter(driver == 'Driver')
+#driver_trips = trips %>% filter(driver == 'Driver', (main_mode=='SOV' || main_mode=='HOV'), trip_path_distance<100,
+                               # )
+#overall vmt per person
+days= days %>% filter(hh_day_wt_combined>0)
+trips_days= merge(days, trips, by.x = c("personid", "daynum"),
+                                 by.y=c("personid", 'daynum'), all.x=TRUE)
+
+trips_days$trip_wt_only = trips_days$trip_wt_combined/trips_days$hh_day_wt_combined.x
+trips_days = trips_days%>% mutate(trip_wt_only = replace_na(trip_wt_only , 0))
+trips_days$trip_weighted_distance=
+  trips_days$trip_wt_only*trips_days$trip_path_distance
+
+trips_days=trips_days%>% mutate(trip_weighted_distance= replace_na(trip_weighted_distance, 0))
+
+days_mode_miles = trips_days%>% group_by(personid, daynum,main_mode) %>% 
+  summarise(trip_weighted_distance=sum(trip_weighted_distance), 
+            day_wts = first(hh_day_wt_combined.x)) 
+
+days_mode_miles$day_wt_vmt = days_mode_miles$trip_weighted_distance*days_mode_miles$day_wts
+
+# remove outlier days?
+days_mode_miles = days_mode_miles %>% filter(trip_weighted_distance<200, hh_day_wt_combined.x<500)
+
+days_mode_miles$weighted_distance = days_mode_miles$trip_weighted_distance*days_mode_miles$day_wts
+total_distance_mode_day = days_mode_miles %>% group_by(main_mode) %>% 
+  summarise(tot_miles=sum(weighted_distance, na.rm=TRUE))
+
+sum(days$hh_day_wt_combined)
+
+total_distance_mode_day$avg_miles = total_distance_mode_day$tot_miles/sum(days$hh_day_wt_combined)
+
+#14.7 + 5.08
+# assume vehicle occupancy of 2.5 for simpilicity
 
 
-driver_trips_no_telework = merge(workers_no_telework_time_days, driver_trips, by.x = c("person_id", "daynum"),
-                               by.y=c("personid", 'daynum'))
-driver_trips_no_telework$weighted_distance=driver_trips_no_telework$trip_wt_combined*driver_trips_no_telework$trip_path_distance
-driver_trips_no_telework=driver_trips_no_telework%>% replace(is.na(.), 0)
+sum_people=sum(days_vmt$day_wts)
+sum_vmt=sum(days_vmt$trip_weighted_vmt*days_vmt$day_wts)
+
+driver_trips_no_telework = merge(workers_no_telework_time_days, driver_trips, by.x = c("personid", "daynum"),
+                               by.y=c("personid", 'daynum'), all.x=TRUE)
+
+driver_trips_no_telework$trip_wt_only = driver_trips_no_telework$trip_wt_combined/driver_trips_no_telework$hh_day_wt_combined.x
+driver_trips_no_telework=driver_trips_no_telework %>% mutate(trip_wt_only = replace_na(trip_wt_only , 0))
+driver_trips_no_telework$trip_weighted_distance=
+driver_trips_no_telework$trip_wt_only*driver_trips_no_telework$trip_path_distance
+
+driver_trips_no_telework=driver_trips_no_telework%>% mutate(trip_weighted_distance= replace_na(trip_weighted_distance, 0))
+
+days_vmt = driver_trips_no_telework %>% group_by(person_id, daynum) %>% 
+          summarise(trip_weighted_vmt=sum(trip_weighted_distance), 
+                     day_wts = first(hh_day_wt_combined.x)) 
+ 
+days_vmt$day_wt_vmt = days_vmt$trip_weighted_vmt*days_vmt$day_wts
+
+# remove outlier days?
+days_vmt = days_vmt %>% filter(trip_weighted_vmt<200)
+
+avg_vmt=weighted.mean(days_vmt$trip_weighted_vmt, days_vmt$day_wts, na.rm=TRUE)
+median_vmt = weighted.median(days_vmt$trip_weighted_vmt, days_vmt$day_wts, na.rm=TRUE)
 
 
-sum(driver_trips_no_telework$weighted_distance)
 
-#53034076
 
 driver_trips_telework_ft= merge(workers_telework_time_days_ft, driver_trips, by.x = c("person_id", "daynum"),
                                  by.y=c("personid", 'daynum'))
