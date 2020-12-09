@@ -65,6 +65,9 @@ glmOut <- function(res, file=out_file, ndigit=3, writecsv=T) {
 }
 
 
+# this data used to create the displacement index has some useful land use info by tract
+displ_index_data<- 'J:/Projects/Surveys/HHTravel/Survey2019/Analysis/displacement/estimation_files/displacement_risk_estimation.csv'
+displ_risk_df <- read.csv(displ_index_data)
 # Read in day table, make a new field for delivery or not
 
 dbtable.day.query<- paste("SELECT *  FROM HHSurvey.v_days_2017_2019_in_house")
@@ -158,8 +161,24 @@ hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='7 people'] <- '3+ people'
 hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='8 people'] <- '3+ people'
 hh_join_deliv$hhsize_grp[hh_join_deliv$hhsize=='9 people'] <- '3+ people'
 
+
+hh_join_deliv$vehicle_group= 
+  with(hh_join_deliv,ifelse(vehicle_count > numadults, 'careq_gr_adults', 'cars_less_adults')) 
+
+hh_join_deliv$hh_race_black = 
+  with(hh_join_deliv,ifelse(hh_race_category== "African American", 'Black', 'Not Black'))
+
+hh_join_deliv$rgc= 
+with(hh_join_deliv,ifelse(final_home_rgcnum!= "Not RCG", 'rgc', 'not_rgc'))
+
+hh_join_deliv$puma_factor <-as.factor(hh_join_deliv$final_home_puma10)
 # Count the number of shopping trips in each household,
 # join back to the table with deliveries and household information
+
+hh_join_deliv$rent_or_not= 
+  with(hh_join_deliv, ifelse(rent_own == 'Own/paying mortgage', 'Own', 'Rent'))
+
+hh_join_deliv$sf_house<-with(hh_join_deliv,ifelse(prev_res_type == 'Single-family house (detached house)', 'Single Family House', 'Not Single Family House'))
 
 sql.query <- paste("SELECT * FROM HHSurvey.v_trips_2017_2019")
 trips = read.dt(sql.query, 'sqlquery')
@@ -194,12 +213,20 @@ deliv_joined_shop$has_children=
 deliv_joined_shop$wrker_group= 
   with(deliv_joined_shop,ifelse(numworkers==0, 'no workers', 'are workers'))
 
-deliver<-glm(delivery~ new_inc_grp+no_vehicles+hhsize_grp+n_shop_trips_grp+seattle_home,
-                   data=deliv_joined_shop,
+#join households to some land use info
+
+deliv_joined_shop$census_2010_tract <- as.character(deliv_joined_shop$final_home_tract)
+displ_risk_df$GEOID <- as.character(displ_risk_df$GEOID)
+deliv_lu<- merge(deliv_joined_shop,displ_risk_df, by.x='census_2010_tract', by.y='GEOID', all.x=TRUE)
+deliv_lu$ln_dist_super= log(1+deliv_lu$dist_super)
+
+deliver<-glm(delivery~ new_inc_grp+no_vehicles+hhsize_grp+n_shop_trips_grp+
+               seattle_home+hh_race_black+dist_super+wrker_group,
+                   data=deliv_lu,
                     family = 'binomial')
 
 
-summary(deliver, correlation= FALSE, family = 'binomial')
+summary(deliver, correlation= TRUE, family = 'binomial')
 
 glmOut(deliver, 'C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/simple_delivery_model.csv')
 
