@@ -68,6 +68,8 @@ glmOut <- function(res, file=out_file, ndigit=3, writecsv=T) {
 # this data used to create the displacement index has some useful land use info by tract
 displ_index_data<- 'J:/Projects/Surveys/HHTravel/Survey2019/Analysis/displacement/estimation_files/displacement_risk_estimation.csv'
 displ_risk_df <- read.csv(displ_index_data)
+
+
 # Read in day table, make a new field for delivery or not
 
 dbtable.day.query<- paste("SELECT *  FROM HHSurvey.v_days_2017_2019_in_house")
@@ -166,7 +168,9 @@ hh_join_deliv$vehicle_group=
   with(hh_join_deliv,ifelse(vehicle_count > numadults, 'careq_gr_adults', 'cars_less_adults')) 
 
 hh_join_deliv$hh_race_black = 
-  with(hh_join_deliv,ifelse(hh_race_category== "African American", 'Black', 'Not Black'))
+  as.factor(with(hh_join_deliv,ifelse(hh_race_category== "African American", 'Black', 'Not Black')))
+
+hh_join_deliv$hh_race_black<- relevel(hh_join_deliv$hh_race_black, ref = "Not Black")
 
 hh_join_deliv$rgc= 
 with(hh_join_deliv,ifelse(final_home_rgcnum!= "Not RCG", 'rgc', 'not_rgc'))
@@ -180,6 +184,8 @@ hh_join_deliv$rent_or_not=
 
 hh_join_deliv$sf_house<-with(hh_join_deliv,ifelse(prev_res_type == 'Single-family house (detached house)', 'Single Family House', 'Not Single Family House'))
 
+
+## Let's look at all the other trips people made in their day.
 sql.query <- paste("SELECT * FROM HHSurvey.v_trips_2017_2019")
 trips = read.dt(sql.query, 'sqlquery')
 
@@ -207,21 +213,70 @@ deliv_joined_shop$n_shop_trips_grp[deliv_joined_shop$n_shop_trips_0==0] <- '0 hh
 deliv_joined_shop$n_shop_trips_grp[deliv_joined_shop$n_shop_trips_0==1] <- '1 hh shop trips'
 deliv_joined_shop$n_shop_trips_grp[deliv_joined_shop$n_shop_trips_0>1] <- '2+ hh shop trips'
 
+# look at the number of work trips as well:
+
+
+d_work= trips[trips$d_purp_cat == "Work",]
+
+work_trip_per_hh = d_work %>%
+  #first, we have to filter the trip data where travelers_hh are missing
+  filter(travelers_hh > 0, travelers_hh < 20) %>% 
+  mutate(work_trip = 1/travelers_hh) %>% 
+  group_by(hhid,daynum) %>% 
+  summarise(n_work_trips = n(), weight_comb = sum(trip_wt_combined*work_trip ))
+
+
+
+deliv_joined_shop = left_join(deliv_joined_shop, work_trip_per_hh,  by = c("household_id" = "hhid", 
+                                                                      "daynum"="daynum")) 
+
+
+# put zeroes for households with no shopping trips
+deliv_joined_shop = deliv_joined_shop %>% mutate(n_work_trips_0 = replace_na(n_work_trips, 0))
+
+deliv_joined_shop$n_work_trips_grp <- deliv_joined_shop$n_work_trips_0
+deliv_joined_shop$n_work_trips_grp[deliv_joined_shop$n_work_trips_0==0] <- '0 hh work trips'
+deliv_joined_shop$n_work_trips_grp[deliv_joined_shop$n_work_trips_0>=1] <- '1+ hh work trips'
+
+
+#look at all the trips in the household
+
+trip_per_hh = trips%>%
+  #first, we have to filter the trip data where travelers_hh are missing
+  filter(travelers_hh > 0, travelers_hh < 20) %>% 
+  mutate(trip = 1/travelers_hh) %>% 
+  group_by(hhid,daynum) %>% 
+  summarise(n_trips = n(), weight_comb = sum(trip_wt_combined*trip ))
+
+
+
+deliv_joined_shop = left_join(deliv_joined_shop, trip_per_hh,  by = c("household_id" = "hhid", 
+                                                                           "daynum"="daynum")) 
+
+# all trips in the household
+
+# put zeroes for households with no trips
+deliv_joined_shop = deliv_joined_shop %>% mutate(n_trips_0 = replace_na(n_trips, 0))
+
+deliv_joined_shop$n_trips_grp <- deliv_joined_shop$n_trips_0
+deliv_joined_shop$n_trips_grp[deliv_joined_shop$n_trips_0==0] <- '0 hh trips'
+deliv_joined_shop$n_trips_grp[deliv_joined_shop$n_trips_0>=1 & deliv_joined_shop$n_trips_0<=4] <- '1-4 hh trips'
+deliv_joined_shop$n_trips_grp[deliv_joined_shop$n_trips_0>4]<-'4+ hh trips'
+
 deliv_joined_shop$has_children= 
   with(deliv_joined_shop,ifelse(numchildren>=1, 'children', 'no children')) 
 
 deliv_joined_shop$wrker_group= 
   with(deliv_joined_shop,ifelse(numworkers==0, 'no workers', 'are workers'))
 
-#join households to some land use info
-
+#join households to some 
 deliv_joined_shop$census_2010_tract <- as.character(deliv_joined_shop$final_home_tract)
 displ_risk_df$GEOID <- as.character(displ_risk_df$GEOID)
 deliv_lu<- merge(deliv_joined_shop,displ_risk_df, by.x='census_2010_tract', by.y='GEOID', all.x=TRUE)
 deliv_lu$ln_dist_super= log(1+deliv_lu$dist_super)
 
-deliver<-glm(delivery~ new_inc_grp+no_vehicles+hhsize_grp+n_shop_trips_grp+
-               seattle_home+hh_race_black+dist_super+wrker_group,
+deliver<-glm(delivery~ no_vehicles+hhsize_grp+n_shop_trips_grp+n_work_trips_grp+new_inc_grp+
+               ln_jobs_auto_30+hh_race_black+empret_2,
                    data=deliv_lu,
                     family = 'binomial')
 
@@ -229,6 +284,7 @@ deliver<-glm(delivery~ new_inc_grp+no_vehicles+hhsize_grp+n_shop_trips_grp+
 summary(deliver, correlation= TRUE, family = 'binomial')
 
 glmOut(deliver, 'C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/simple_delivery_model.csv')
+
 
 
 stargazer(deliver, type= 'text', out='C:/Users/SChildress/Documents/GitHub/travel-studies/2019/analysis/deliver_model.txt')
