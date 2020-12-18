@@ -199,8 +199,6 @@ my.render.cat <- function(x) {
 
 ```{r Data setup, include = FALSE, cache= TRUE}
 
-# Load Data
-parent_folder <- "C:/Users/mrichards/Documents/GitHub/travel-studies/2019/analysis/zero_veh_hh/model_outputs/"
 
 #read in the household table
 elmer_connection <- dbConnect(odbc::odbc(),
