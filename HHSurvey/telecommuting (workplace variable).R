@@ -8,12 +8,6 @@ library(odbc)
 library(DBI)
 library(psych)
 
-
-# Functions ----------------------------------------------------------------
-
-
-## Read from Elmer
-
 # Statistical assumptions for margins of error
 p_MOE <- 0.5
 z<-1.645
