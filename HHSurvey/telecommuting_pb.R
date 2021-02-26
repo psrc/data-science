@@ -410,6 +410,15 @@ no_telework_day_trips_work = no_telework_day_trips_filter %>% filter(dest_purpos
 sum(no_telework_day_trips_work$wt_distance,na.rm = TRUE)/sum(no_telework_day_trips_work$trip_wt_combined,na.rm = TRUE)
 
 
+  #average total daily distance traveled (not trip) made by workers who didnt telework
+person_simple2 = person %>% select(c(person_id,worker))
+no_telework_trips_filter_person = left_join(no_telework_day_trips_filter, person_simple2, by = c("personid" = "person_id"))
+no_telework_trips_filter_worker = no_telework_trips_filter_person %>% filter(worker != "No jobs" )
+
+sum(no_telework_trips_filter_worker$wt_distance,na.rm = TRUE)/sum(no_telework_trips_filter_worker$trip_wt_combined,na.rm = TRUE)
+sum(no_telework_trips_filter_worker$wt_distance,na.rm = TRUE)/sum(person$hh_wt_combined[person$worker != "No jobs"])
+
+
 # Socio-Economic Characteristics ----------------------------------------------------------------
 person_simple = person %>% select(-c(weighted_trip_count_revised,weighted_trip_count_combined,weighted_trip_count_2019, hh_wt_revised,hh_wt_2019,hh_wt_combined,
                                      hh_day_wt_2019, hh_day_wt_combined,hh_day_wt_revised))
