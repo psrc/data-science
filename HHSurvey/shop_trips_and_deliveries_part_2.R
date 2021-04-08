@@ -109,6 +109,8 @@ write.table(hh_food_2019, "clipboard", sep="\t")
 sql.query <- paste("SELECT * FROM HHSurvey.v_households_2017_2019")
 household = read.dt(sql.query, 'sqlquery')
 
+write.table(household %>% group_by(hh_race_category) %>% tally(), "clipboard", sep='\t')
+
 hh_delivery = left_join(day_household,household, by = c("hhid" = "hhid"))
 
 
@@ -136,10 +138,28 @@ hh_delivery$hhsize_grp[hh_delivery$hhsize=='7 people'] <- '5+ people'
 hh_delivery$hhsize_grp[hh_delivery$hhsize=='8 people'] <- '5+ people'
 hh_delivery$hhsize_grp[hh_delivery$hhsize=='9 people'] <- '5+ people'
 
+hh_delivery$wrkr_grp <- hh_delivery$numworkers
+hh_delivery$wrkr_grp[hh_delivery$wrkr_grp==4] <- 3
+hh_delivery$wrkr_grp[hh_delivery$wrkr_grp==5] <- 3
+
+hh_delivery$hh_race_black = 
+  as.factor(with(hh_delivery,ifelse(hh_race_category== "African American", 'Black', 'Not Black')))
+
+hh_delivery$hh_race_black<- relevel(hh_delivery$hh_race_black, ref = "Not Black")
+
 
 hh_income_deliveries<-cross_tab_categorical(hh_delivery,'new_inc_grp', 'delivery','day_wts_2019')
 write.table(hh_income_deliveries, "clipboard", sep="\t")
 
 hh_size_deliveries<-cross_tab_categorical(hh_delivery,'hhsize_grp', 'delivery','day_wts_2019')
 write.table(hh_size_deliveries, "clipboard", sep="\t")
+
+hh_wrkrs_deliveries<-cross_tab_categorical(hh_delivery,'wrkr_grp', 'delivery','day_wts_2019')
+write.table(hh_wrkrs_deliveries, "clipboard", sep="\t")
+
+hh_race_deliveries<-cross_tab_categorical(hh_delivery,'hh_race_category', 'delivery','day_wts_2019')
+write.table(hh_race_deliveries, "clipboard", sep="\t")
+
+hh_race_black_deliveries<-cross_tab_categorical(hh_delivery,'hh_race_black', 'delivery','day_wts_2019')
+write.table(hh_race_black_deliveries, "clipboard", sep="\t")
 

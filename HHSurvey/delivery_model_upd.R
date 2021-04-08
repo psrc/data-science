@@ -266,8 +266,9 @@ deliv_joined_shop$n_trips_grp[deliv_joined_shop$n_trips_0>4]<-'4+ hh trips'
 deliv_joined_shop$has_children= 
   with(deliv_joined_shop,ifelse(numchildren>=1, 'children', 'no children')) 
 
-deliv_joined_shop$wrker_group= 
-  with(deliv_joined_shop,ifelse(numworkers==0, 'no workers', 'are workers'))
+deliv_joined_shop$wrker_group='no workers'
+deliv_joined_shop$wrker_group[deliv_joined_shop$numworkers>0]<-'are workers'
+
 
 #join households to some 
 deliv_joined_shop$census_2010_tract <- as.character(deliv_joined_shop$final_home_tract)
@@ -275,8 +276,8 @@ displ_risk_df$GEOID <- as.character(displ_risk_df$GEOID)
 deliv_lu<- merge(deliv_joined_shop,displ_risk_df, by.x='census_2010_tract', by.y='GEOID', all.x=TRUE)
 deliv_lu$ln_dist_super= log(1+deliv_lu$dist_super)
 
-deliver<-glm(delivery~ no_vehicles+hhsize_grp+n_shop_trips_grp+n_work_trips_grp+new_inc_grp+
-               ln_jobs_auto_30+hh_race_black+empret_2,
+deliver<-glm(delivery~ no_vehicles+hhsize_grp+n_shop_trips_grp+wrker_group+new_inc_grp+seattle_home+
+               ln_jobs_auto_30+hh_race_black,
                    data=deliv_lu,
                     family = 'binomial')
 
@@ -291,6 +292,8 @@ stargazer(deliver, type= 'text', out='C:/Users/SChildress/Documents/GitHub/trave
 
 PseudoR2(deliver, c("McFadden", "Nagel"))
 #https://cran.r-project.org/web/packages/jtools/vignettes/summ.html#effect_plot
+
+plot_summs(deliver, scale = TRUE)
  
 
 
