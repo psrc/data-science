@@ -30,7 +30,7 @@ library(sqldf)
 p_MOE <- 0.5
 z<-1.645
 missing_codes <- c('Missing: Technical Error', 'Missing: Non-response', 
-                   'Missing: Skip logic', 'Children or missing', 'Prefer not to answer')
+                   'Missing: Skip logic', 'Children or missing', 'Prefer not to answer', "Not applicable")
 
 # connecting to Elmer
 db.connect <- function() {
@@ -87,14 +87,18 @@ create_table_one_var_trip = function(var1, table_temp,table_type ) {
     weight_2017 = "trip_weight_revised"
     weight_2019 = "trip_wt_2019"
     weight_comb = "trip_wt_combined"  
-  } 
+  } else if (table_type == "day") {
+    weight_2017 = "hh_day_wt_revised"
+    weight_2019 = "hh_day_wt_2019"
+    weight_comb = "hh_day_wt_combined"
+  }
   
-  trip_wt = "shop_trip"
+ # trip_wt = "shop_trip"
   
-  temp = table_temp %>% select(!!sym(var1), all_of(weight_2017), all_of(weight_2019), all_of(weight_comb)) %>% 
+  temp = table_temp %>% dplyr::select(!!sym(var1), all_of(weight_2017), all_of(weight_2019), all_of(weight_comb)) %>% 
     filter(!.[[1]] %in% missing_codes, !is.na(.[[1]])) %>% 
     group_by(!!sym(var1)) %>% 
-    summarise(n=n(),sum_wt_comb = sum(.data[[weight_comb]]*.data[[trip_wt]],na.rm = TRUE),sum_wt_2017 = sum(.data[[weight_2017]],na.rm = TRUE),sum_wt_2019 = sum(.data[[weight_2019]],na.rm = TRUE)) %>% 
+    summarise(n=n(),sum_wt_comb = sum(.data[[weight_comb]],na.rm = TRUE),sum_wt_2017 = sum(.data[[weight_2017]],na.rm = TRUE),sum_wt_2019 = sum(.data[[weight_2019]],na.rm = TRUE)) %>% 
     mutate(perc_comb = sum_wt_comb/sum(sum_wt_comb)*100, perc_2017 = sum_wt_2017/sum(sum_wt_2017)*100, perc_2019 = sum_wt_2019/sum(sum_wt_2019)*100,delta = perc_2019-perc_2017) %>% 
     ungroup() %>%  mutate(MOE=z*(p_MOE/sum(n))^(1/2)*100) %>% arrange(desc(perc_comb))
   return(temp)
@@ -114,19 +118,6 @@ create_table = function(var1,var2, table_temp ) {
   
   
 }
-
-# Analysis ----------------------------------------------------------------
-sql.query <- paste("SELECT * FROM HHSurvey.v_trips_2017_2019_public")
-trips = read.dt(sql.query, 'sqlquery')
-
-#loading day table
-
-sql.query <- paste("SELECT * FROM HHSurvey.v_days_2017_2019_public")
-days = read.dt(sql.query, 'sqlquery')
-
-#checking the categories of telework_time
-
-temp = days %>% group_by(telework_time) %>% tally()
 
 #function to parse time categories (characters) to number of minutes (int)
 time_parse = function (value) {
@@ -149,6 +140,36 @@ time_parse = function (value) {
   }
   
 }
+
+cross_tab_categorical <- function(table, var1, var2, wt_field) {
+  expanded <- table %>% 
+    group_by(.data[[var1]],.data[[var2]]) %>%
+    summarise(Count= n(),Total=sum(.data[[wt_field]])) %>%
+    group_by(.data[[var1]])%>%
+    mutate(Percentage=Total/sum(Total)*100)
+  
+  
+  expanded_pivot <-expanded%>%
+    pivot_wider(names_from=.data[[var2]], values_from=c(Percentage,Total, Count))
+  
+  return (expanded_pivot)
+  
+} 
+
+
+# Analysis ----------------------------------------------------------------
+sql.query <- paste("SELECT * FROM HHSurvey.v_trips_2017_2019_public")
+trips = read.dt(sql.query, 'sqlquery')
+
+#loading day table
+
+sql.query <- paste("SELECT * FROM HHSurvey.v_days_2017_2019_public")
+days = read.dt(sql.query, 'sqlquery')
+
+#checking the categories of telework_time
+
+temp = days %>% group_by(telework_time) %>% tally()
+
 
 #creating a new column 
 days_telecom = days %>% mutate(upd_telework_time = 0)
@@ -389,29 +410,48 @@ no_telework_day_trips_work = no_telework_day_trips_filter %>% filter(dest_purpos
 sum(no_telework_day_trips_work$wt_distance,na.rm = TRUE)/sum(no_telework_day_trips_work$trip_wt_combined,na.rm = TRUE)
 
 
+  #average total daily distance traveled (not trip) made by workers who didnt telework
+person_simple2 = person %>% select(c(person_id,worker))
+no_telework_trips_filter_person = left_join(no_telework_day_trips_filter, person_simple2, by = c("personid" = "person_id"))
+no_telework_trips_filter_worker = no_telework_trips_filter_person %>% filter(worker != "No jobs" )
 
-#VMT
-#choose only Driver trips
-driver_trips = trips %>% filter(driver == 'Driver' & trip_path_distance < 200)
-
-driver_trips_no_telework = merge(no_telework_day, driver_trips, by.x = c("personid", "daynum"),
-                                 by.y=c("personid", 'daynum')) 
-driver_trips_no_telework$weighted_distance=driver_trips_no_telework$trip_wt_combined*driver_trips_no_telework$trip_path_distance
-#driver_trips_no_telework=driver_trips_no_telework%>% replace(is.na(.), 0)
+sum(no_telework_trips_filter_worker$wt_distance,na.rm = TRUE)/sum(no_telework_trips_filter_worker$trip_wt_combined,na.rm = TRUE)
+sum(no_telework_trips_filter_worker$wt_distance,na.rm = TRUE)/sum(person$hh_wt_combined[person$worker != "No jobs"])
 
 
-sum(driver_trips_no_telework$weighted_distance,na.rm = TRUE)
+# Socio-Economic Characteristics ----------------------------------------------------------------
+person_simple = person %>% select(-c(weighted_trip_count_revised,weighted_trip_count_combined,weighted_trip_count_2019, hh_wt_revised,hh_wt_2019,hh_wt_combined,
+                                     hh_day_wt_2019, hh_day_wt_combined,hh_day_wt_revised))
+household_simple = household %>% select(-c( hh_wt_revised,hh_wt_2019,hh_wt_combined,
+                                           hh_day_wt_2019, hh_day_wt_combined,hh_day_wt_revised))
+days_telecom_person = left_join(days_telecom, person_simple, by = c("personid" = "person_id"))
+days_telecom_person_hh = left_join(days_telecom_person,household_simple, by = c("hhid" = "household_id"))
 
-#48671875
-workers_telework_time_days_ft = telework_day %>% filter(telework_cat == "Full-time or greater")
-driver_trips_telework_ft= merge(workers_telework_time_days_ft, driver_trips, by.x = c("personid", "daynum"),
-                                by.y=c("personid", 'daynum'))
-driver_trips_telework_ft$weighted_distance=driver_trips_telework_ft$trip_wt_combined*driver_trips_telework_ft$trip_path_distance
-#driver_trips_telework_ft=driver_trips_telework_ft%>% replace(is.na(.), 0)
+days_telecom_person_hh = days_telecom_person_hh %>% filter(!is.na(upd_telework_time)) %>% 
+  mutate(
+    telework_cat = case_when(
+      (as.numeric(upd_telework_time)) == 0  ~ "None",
+      (as.numeric(upd_telework_time) > 0 & as.numeric(upd_telework_time) <= 60)  ~ "Less than 1 hr",
+      (as.numeric(upd_telework_time) > 60 & as.numeric(upd_telework_time) < 360) ~ "Part-time",
+      as.numeric(upd_telework_time) >= 360 & as.numeric(upd_telework_time) <= 720 ~ "Full-time or greater",
+      TRUE ~"Other"
+    ))
 
 
-sum(driver_trips_telework_ft$weighted_distance, na.rm = TRUE)
-#3862749
 
-#filter to driver only
+# Frequency analysis ----------------------------------------------------------------
+
+person_upd_freq = person %>% filter(!is.na(telecommute_freq),!telecommute_freq %in% missing_codes) %>%  
+                             dplyr::mutate(telecom_freq_upd = case_when(telecommute_freq == "1 day a week"  ~ "1-3 days a week",
+                                                                 telecommute_freq == "2 days a week"  ~ "1-3 days a week",
+                                                                 telecommute_freq == "3 days a week"  ~ "1-3 days a week",
+                                                                 telecommute_freq == "4 days a week"  ~ "4-7 days a week",
+                                                                 telecommute_freq == "5 days a week"  ~ "4-7 days a week",
+                                                                 telecommute_freq == "6-7 days a week"  ~ "4-7 days a week",
+                                                                 telecommute_freq == "A few times per month"  ~ "A few times per month",
+                                                                 telecommute_freq == "Less than monthly"  ~ "Less than monthly",
+                                                                 telecommute_freq == "Never"  ~ "Never",
+                                                                 TRUE ~ "Other" ))
+
+
 

@@ -1,0 +1,344 @@
+---
+title: "Telework"
+author: "Polina Butrina"
+date: "`r format(Sys.time(), '%B %d %Y')`"
+output: 
+  html_document:
+    df_print: paged
+    toc: true
+    toc_depth: 6
+    toc_float: true
+  word_document: default
+  pdf_document: default
+---
+
+This report presents preliminary findings for telework time trends based on the Household Travel Survey (2017 and 2019).
+
+```{r global-options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, 
+                      warning=FALSE, 
+                      message=FALSE) # formatting
+```
+
+```{r Libraries, include=FALSE}
+library(nnet)
+library(data.table)
+library(tidyverse)
+library(DT)
+library(openxlsx)
+library(odbc)
+library(DBI)
+
+library(Hmisc) # before dplyr so dplyr functions will worklibrary(Hmisc)
+library(corrplot)
+
+library(dplyr)
+library(summarytools)
+#library(stargazer)
+library(MASS)
+#library(caret) #requires lattice and ggplot2
+library(ggplot2)
+library(lattice)
+#library(interactions)
+#library(hablar)
+library(kableExtra)
+
+library(tidyr)
+#library(reshape2)
+library(table1)
+library(knitr)
+#library(kableExtra)
+```
+```{r Functions}
+p_MOE <- 0.5
+z<-1.645
+missing_codes <- c('Missing: Technical Error', 'Missing: Non-response', 
+                   'Missing: Skip logic', 'Children or missing', 'Prefer not to answer')
+
+# connecting to Elmer
+db.connect <- function() {
+  elmer_connection <- dbConnect(odbc(),
+                                driver = "SQL Server",
+                                server = "AWS-PROD-SQL\\Sockeye",
+                                database = "Elmer",
+                                trusted_connection = "yes"
+  )
+}
+
+# a function to read tables and queries from Elmer
+read.dt <- function(astring, type =c('table_name', 'sqlquery')) {
+  elmer_connection <- db.connect()
+  if (type == 'table_name') {
+    dtelm <- dbReadTable(elmer_connection, SQL(astring))
+  } else {
+    dtelm <- dbGetQuery(elmer_connection, SQL(astring))
+  }
+  dbDisconnect(elmer_connection)
+  dtelm
+}
+
+create_table_one_var = function(var1, table_temp,table_type ) {
+  #table_temp = recategorize_var_upd(var2,table_temp)
+  #print(table_temp)
+  if (table_type == "household" | table_type == "person" ) {
+    weight_2017 = "hh_wt_revised"
+    weight_2019 = "hh_wt_2019"
+    weight_comb = "hh_wt_combined"
+  } else if (table_type == "trip") {
+    weight_2017 = "trip_weight_revised"
+    weight_2019 = "trip_wt_2019"
+    weight_comb = "trip_wt_combined"  
+  } 
+  
+  temp = table_temp %>% dplyr::select(!!sym(var1), all_of(weight_2017), all_of(weight_2019), all_of(weight_comb)) %>% 
+    filter(!.[[1]] %in% missing_codes, !is.na(.[[1]])) %>% 
+    group_by(!!sym(var1)) %>%  
+    summarise(n=n(),sum_wt_comb = sum(.data[[weight_comb]],na.rm = TRUE),sum_wt_2017 = sum(.data[[weight_2017]],na.rm = TRUE),sum_wt_2019 = sum(.data[[weight_2019]],na.rm = TRUE)) %>% 
+    mutate(perc_comb = sum_wt_comb/sum(sum_wt_comb)*100, perc_2017 = sum_wt_2017/sum(sum_wt_2017)*100, perc_2019 = sum_wt_2019/sum(sum_wt_2019)*100,delta = perc_2019-perc_2017) %>% 
+    ungroup() %>%  mutate(MOE=z*(p_MOE/sum(n))^(1/2)*100) %>% arrange(desc(perc_comb))
+  return(temp)
+}
+
+create_table_one_var_trip = function(var1, table_temp,table_type ) {
+  #table_temp = recategorize_var_upd(var2,table_temp)
+  #print(table_temp)
+  if (table_type == "household" | table_type == "person" ) {
+    weight_2017 = "hh_wt_revised"
+    weight_2019 = "hh_wt_2019"
+    weight_comb = "hh_wt_combined"
+  } else if (table_type == "trip") {
+    weight_2017 = "trip_weight_revised"
+    weight_2019 = "trip_wt_2019"
+    weight_comb = "trip_wt_combined"  
+  } else if (table_type == "day") {
+    weight_2017 = "hh_day_wt_revised"
+    weight_2019 = "hh_day_wt_2019"
+    weight_comb = "hh_day_wt_combined"
+  }
+  
+ # trip_wt = "shop_trip"
+  
+  temp = table_temp %>% dplyr::select(!!sym(var1), all_of(weight_2017), all_of(weight_2019), all_of(weight_comb)) %>% 
+    filter(!.[[1]] %in% missing_codes, !is.na(.[[1]])) %>% 
+    group_by(!!sym(var1)) %>% 
+    summarise(n=n(),sum_wt_comb = sum(.data[[weight_comb]],na.rm = TRUE),sum_wt_2017 = sum(.data[[weight_2017]],na.rm = TRUE),sum_wt_2019 = sum(.data[[weight_2019]],na.rm = TRUE)) %>% 
+    mutate(perc_comb = sum_wt_comb/sum(sum_wt_comb)*100, perc_2017 = sum_wt_2017/sum(sum_wt_2017)*100, perc_2019 = sum_wt_2019/sum(sum_wt_2019)*100,delta = perc_2019-perc_2017) %>% 
+    ungroup() %>%  mutate(MOE=z*(p_MOE/sum(n))^(1/2)*100) %>% arrange(desc(perc_comb))
+  return(temp)
+}
+
+create_table = function(var1,var2, table_temp ) {
+  #table_temp = recategorize_var_upd(var2,table_temp)
+  #print(table_temp)
+  temp = table_temp %>% dplyr::select(!!sym(var1), !!sym(var2),hh_wt_revised,hh_wt_2019, hh_wt_combined) %>% 
+    filter(!.[[1]] %in% missing_codes, !is.na(.[[1]]),!is.na(.[[2]]),!.[[2]] %in% missing_codes) %>% 
+    group_by(!!sym(var1), !!sym(var2)) %>% 
+    summarize(n=n(),sum_wt_comb = sum(hh_wt_combined,na.rm = TRUE),sum_wt_2017 = sum(hh_wt_revised,na.rm = TRUE),sum_wt_2019 = sum(hh_wt_2019,na.rm = TRUE)) %>% 
+    group_by(!!sym(var2)) %>%  
+    mutate(perc_comb = sum_wt_comb/sum(sum_wt_comb)*100, perc_2017 = sum_wt_2017/sum(sum_wt_2017)*100, perc_2019 = sum_wt_2019/sum(sum_wt_2019)*100,delta = perc_2019-perc_2017) %>% 
+    ungroup() %>%  mutate(MOE=1.65*(0.25/sum(n))^(1/2)*100)
+  return(temp)
+  
+  
+}
+
+#function to parse time categories (characters) to number of minutes (int)
+time_parse = function (value) {
+  
+  if (is.na(value) == TRUE ) {
+    return (NA)
+  } else if (value == "None"){
+    return (0)
+  }
+  temp = str_split (value, " ")[[1]]
+  
+  if (length(temp) == 4 ) {
+    return ( as.numeric(temp[1]) *60 + as.numeric(temp[3])/60)
+  } else if (temp[2] == "hour") {
+    return(60)
+  } else if (temp[2] == "hours") {
+    return( 60 * as.numeric(temp[1]))
+  } else if (temp[2] == "minutes") {
+    return( as.numeric(temp[1])/60)
+  }
+  
+}
+
+cross_tab_categorical <- function(table, var1, var2, wt_field) {
+  expanded <- table %>% 
+    group_by(.data[[var1]],.data[[var2]]) %>%
+    summarise(Count= n(),Total=sum(.data[[wt_field]])) %>%
+    group_by(.data[[var1]])%>%
+    mutate(Share=Total/sum(Total)*100)
+  
+  
+  expanded_pivot <-expanded%>%
+    pivot_wider(names_from=.data[[var2]], values_from=c(Share,Total, Count))
+  
+  return (expanded_pivot)
+  
+} 
+
+
+# create stargazer table
+stargazer_table <- function(outcome, explanatory, table_title){
+  stargazer::stargazer(
+    polr(as.factor(outcome) ~ explanatory, Hess=T), type = "html",
+                      title =  table_title,
+                      notes.append =  FALSE, 
+                      notes =  c("<sup>&sstarf;</sup>p<0.1; <sup>&sstarf;&sstarf;</sup>p<0.05; <sup>&sstarf;&sstarf;&sstarf;</sup>p<0.01"))
+
+}
+
+# rounding function applied to categorical columns 
+my.render.cat <- function(x) {
+    c("", sapply(stats.default(x), function(y) with(y,
+        sprintf("%d (%.0f%%)", FREQ, PCT))))
+  }
+```
+
+```{r Data setup, include = FALSE, cache= TRUE}
+
+
+#read in the household table
+elmer_connection <- dbConnect(odbc::odbc(),
+                              driver = "SQL Server",
+                              server = "AWS-PROD-SQL\\Sockeye",
+                              database = "Elmer",
+                              trusted_connection = "yes")
+h <- dbGetQuery(elmer_connection,
+                "SELECT * FROM HHSurvey.v_households_2017_2019_in_house")
+p <- dbGetQuery(elmer_connection,
+                "SELECT * FROM HHSurvey.v_persons_2017_2019_in_house")
+
+d <- dbGetQuery(elmer_connection,
+                "SELECT * FROM HHSurvey.v_days_2017_2019_public")
+
+t <- dbGetQuery(elmer_connection,
+                "SELECT * FROM HHSurvey.v_trips_2017_2019_public")
+
+dbDisconnect(elmer_connection)
+
+
+household <- data.table(h)
+person <- data.table(p)
+days <- data.table(d)
+trips <- data.table(t)
+
+# Statistical assumptions for margins of error
+p_MOE <- 0.5
+z<-1.645
+missing_codes <- c('Missing: Technical Error', 'Missing: Non-response', 
+                   'Missing: Skip logic', 'Children or missing', 'Prefer not to answer',
+                   'Missing')
+```
+```{r Data Prep and Data Joins, include = FALSE, cache= TRUE}
+#creating a new column 
+days_telecom = days %>% mutate(upd_telework_time = 0)
+
+for (i in 1:nrow(days)){
+  days_telecom$upd_telework_time[i] = time_parse(days$telework_time[i])
+}
+person_simple = person %>% dplyr::select(-c(weighted_trip_count_revised,weighted_trip_count_combined,weighted_trip_count_2019, hh_wt_revised,hh_wt_2019,hh_wt_combined,
+                                     hh_day_wt_2019, hh_day_wt_combined,hh_day_wt_revised))
+household_simple = household %>% dplyr::select(-c( hh_wt_revised,hh_wt_2019,hh_wt_combined,
+                                           hh_day_wt_2019, hh_day_wt_combined,hh_day_wt_revised))
+days_telecom_person = left_join(days_telecom, person_simple, by = c("personid" = "person_id"))
+days_telecom_person_hh = left_join(days_telecom_person,household_simple, by = c("hhid" = "household_id"))
+
+days_telecom_person_hh = days_telecom_person_hh %>% filter(!is.na(upd_telework_time)) %>% 
+  mutate(
+    telework_cat = case_when(
+      (as.numeric(upd_telework_time)) == 0  ~ "None",
+      (as.numeric(upd_telework_time) > 0 & as.numeric(upd_telework_time) <= 60)  ~ "Less than 1 hr",
+      (as.numeric(upd_telework_time) > 60 & as.numeric(upd_telework_time) < 360) ~ "Part-time",
+      as.numeric(upd_telework_time) >= 360 & as.numeric(upd_telework_time) <= 720 ~ "Full-time or greater",
+      TRUE ~"Other"
+    )) %>% 
+  filter(!telework_cat == "Other")
+
+```
+
+## 1. Socio-economic characteristics
+This section describes the socio-economic characteristics of people who telework and people who dont telework.
+\
+*Summary of telewrok time*
+```{r summary}
+# freq(person_and_household$hhincome_broad)
+
+days_telecom_person_hh$telework_cat <- factor(days_telecom_person_hh$telework_cat,
+                                                levels=c("None","Less than 1 hr","Part-time","Full-time or greater","Other"))
+
+dt = create_table_one_var_trip("telework_cat", days_telecom_person_hh,"day" ) %>%
+  mutate (Weighted_Sum = round(sum_wt_comb,0), Share = round(perc_comb,0), MOE = round(MOE,2) ) %>% 
+  dplyr::select(telework_cat,n, Weighted_Sum,Share,MOE) %>% arrange(telework_cat)
+
+dt %>%
+  kbl() %>%
+  #kable_material(c("striped", "hover"))
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+
+```
+
+
+*Telewrok by Age*
+```{r age}
+dt = cross_tab_categorical(days_telecom_person_hh,"telework_cat","age", "hh_day_wt_combined")
+number = nrow(days_telecom_person_hh %>% group_by(age) %>% tally())
+dt %>% mutate_at(vars(-telework_cat), funs(round(., 1))) %>% 
+  dplyr::select(1:(number+1)) %>% 
+  kbl() %>%
+  #kable_material(c("striped", "hover"))
+  kable_paper("hover", full_width = F)
+```
+
+
+*Telewrok by Income*
+```{r income}
+
+days_telecom_person_hh$hhincome_broad = factor(days_telecom_person_hh$hhincome_detailed, levels = c("Under $10,000", "$10,000-$24,999", "$25,000-$34,999", "$35,000-$49,999", "$50,000-$74,999","$75,000-$99,999","$100,000-$149,999", "$150,000-$199,999", "$200,000-$249,999", "$250,000 or more") )
+
+dt = cross_tab_categorical(days_telecom_person_hh,"telework_cat","hhincome_detailed", "hh_day_wt_combined") %>% arrange(telework_cat)
+#number = nrow(days_telecom_person_hh %>% group_by(hhincome_detailed) %>% tally())
+col_order <- c("telework_cat","Share_Under $10,000", "Share_$10,000-$24,999", "Share_$25,000-$34,999", "Share_$35,000-$49,999", "Share_$50,000-$74,999","Share_$75,000-$99,999","Share_$100,000-$149,999", "Share_$150,000-$199,999", "Share_$200,000-$249,999", "Share_$250,000 or more", "Share_Prefer not to answer")
+dt <- dt[, col_order]
+
+dt %>% #mutate_at(vars(-telework_cat), funs(round(., 1)))%>% 
+  dplyr::select(1:(number+1)) %>% 
+  kbl() %>%
+  #kable_material(c("striped", "hover"))
+  kable_paper("hover", full_width = F)
+```
+*Telewrok by Gender*
+```{r gender}
+
+dt = cross_tab_categorical(days_telecom_person_hh,"telework_cat","gender", "hh_day_wt_combined") %>% arrange(telework_cat)
+number = nrow(days_telecom_person_hh %>% group_by(gender) %>% tally())
+
+dt %>% mutate_at(vars(-telework_cat), funs(round(., 1)))%>% 
+  dplyr::select(1:(number+1)) %>% 
+  kbl() %>%
+  #kable_material(c("striped", "hover"))
+  kable_paper("hover", full_width = F)
+
+```
+
+```{r education}
+
+dt = cross_tab_categorical(days_telecom_person_hh,"telework_cat","education", "hh_day_wt_combined") %>% arrange(telework_cat)
+
+number = nrow(days_telecom_person_hh %>% group_by(education) %>% tally())
+
+dt %>% mutate_at(vars(-telework_cat), funs(round(., 1)))%>% 
+  dplyr::select(1:(number+1)) %>% 
+  kbl() %>%
+  #kable_material(c("striped", "hover"))
+  kable_paper("hover", full_width = F)
+
+```
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
