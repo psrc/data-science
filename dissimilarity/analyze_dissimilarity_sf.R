@@ -4,7 +4,7 @@ library(writexl)
 library(ggplot2)
 
 
-setwd("~/GitHub/dissimilarity")
+setwd("~/GitHub/data-science/dissimilarity")
 
 dissim_index <- read.csv('dissim_bg.csv')
 sf_layer<- read.csv('sf_under10.csv')
@@ -33,7 +33,7 @@ sf_layer<-sf_layer %>% mutate(
 
 dissim_vars<-merge(dissim_index, sf_layer, on='GEOID10')
 
-dissim_vars %>%
+mean_6<-dissim_vars %>%
   group_by(is_sf_6)%>%
   summarize(mean_white_minority_dissim_6=mean(White_Minority_Dissim))
 
