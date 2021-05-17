@@ -53,35 +53,13 @@ new_schools_geo$school_latlong = as.character(new_schools_geo$geometry)
 schools_geo[(nrow(schools_geo) + 1):(nrow(schools_geo) + nrow(new_schools_geo)), names(new_schools_geo)] <- new_schools_geo
 
 
-#matching schools by school name
-
-school_ids = list() 
-for (i in 1:nrow(person_students_geo)) {
-  if (person_students_geo$school_name_from_survey[i] != "" ){
-    a = grep(person_students_geo$school_name_from_survey[i], schools$sname,ignore.case = TRUE)
-    
-    if (length(a) == 0 | length(a) > 1) {
-      school_ids = append(school_ids, 'NA')
-    } else if (length(a) == 1) {
-      school_ids = append(school_ids, schools$school_id[a])
-    } 
-  }
-  else { school_ids = append(school_ids, 'NA')
-  }
-  
-}
-
-person_students_geo$school_id = school_ids
-person_students_geo$distance = 0.0
 
 #match schools by distance
 
 
-#school_ids = list()
-#distance = list()
+school_ids = list()
+distance = list()
 for (i in 1:nrow(person_students_geo)) {
-  
-  if (person_students_geo$school_id[i] == 'NA') {
   
     if (person_students_geo$age[i] < 7) {
       school_queried = schools_geo %>% 
@@ -106,35 +84,41 @@ for (i in 1:nrow(person_students_geo)) {
     
   
     #print(min(st_distance(test_person_student[i,],school_queried,by_element = TRUE)))
-    #distance = append(distance,as.double(min(temp)))
+    distance = append(distance,as.double(min(temp)))
     
-    #school_ids = append(school_ids, school_queried$school_id[index_row])
+    school_ids = append(school_ids, school_queried$school_id[index_row])
     
     #index_t = append(index_t, which.min(st_distance(test_person_student[i,],schools_geo,by_element = TRUE)))
-  }
 }
 
-#find the distance for the schools that were matched by name
 
+person_students_geo$school_id = school_ids
+person_students_geo$distance = distance
+
+#matching schools that are above the threshold and have a valid school name entered by school name
+
+school_ids = list() 
 for (i in 1:nrow(person_students_geo)) {
-  
-  if (person_students_geo$distance[i] == 0) {
-    
-    
-    temp = st_distance(person_students_geo[i,],school_queried,by_element = TRUE)
-    index_row = which.min(temp)
-    person_students_geo$school_id[i] = school_queried$school_id[index_row]
-    person_students_geo$distance[i] = as.double(min(temp))
-    
-    
-    #print(min(st_distance(test_person_student[i,],school_queried,by_element = TRUE)))
-    #distance = append(distance,as.double(min(temp)))
-    
-    #school_ids = append(school_ids, school_queried$school_id[index_row])
-    
-    #index_t = append(index_t, which.min(st_distance(test_person_student[i,],schools_geo,by_element = TRUE)))
+   if (person_students_geo$distance [i] > 500) {
+      if (person_students_geo$school_name_from_survey[i] != "" ){
+        a = grep(person_students_geo$school_name_from_survey[i], schools$sname,ignore.case = TRUE)
+        
+        if (length(a) == 1) {
+          new_dist = as.numeric( st_distance(person_students_geo[i,], schools_geo[a,],by_element = TRUE))
+          
+          if(person_students_geo$distance[i] > new_dist){
+            print(new_dist)
+            print(person_students_geo[i,])
+            print(schools_geo[a,])
+            
+          #school_ids = append(school_ids, schools$school_id[a])
+            }
+        } 
+      }
+    }
   }
-}
+  
+
 
 write.csv(person_students_geo, "person_schools.csv")
 
@@ -148,11 +132,11 @@ students_and_schools = person_students_geo %>%
   select("id","hhid","student","school_parcel_id","school_name_from_survey","school_address_from_survey","school_parcel_distance","edu","age","geometry",
          "person_id","household_id","distance","school_id","category","sname","scity","school_latlong")
 
-students_and_schools_limited2 = students_and_schools %>% 
+students_and_schools_limited3 = students_and_schools %>% 
   filter(distance >500 & sname != "University Of Washington") %>% 
   filter(age < 25)
 
-
+write.csv(not_matched_students, "not_matched_students.csv")
 
 
 # mapping the schools that didnt match
@@ -202,6 +186,3 @@ for (i in 1:10){
 }
 
 
-temp = st_distance(students_and_schools_limited2[1,],schools_geo,by_element = TRUE)
-index_row = which.min(temp)
-person_students_geo$school_id[i] = schools_geo$school_id[index_row]
