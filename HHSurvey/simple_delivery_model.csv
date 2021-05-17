@@ -1,28 +1,22 @@
-V1,V2,V3,V4,V5
-"glm, delivery ~ new_inc_grp + no_vehicles + hhsize_grp + n_shop_trips_grp + seattle_home + hh_race_black + dist_super + wrker_group, binomial, deliv_lu",AIC,Residual Deviance,Null deviance,McFadden/Nagel PseuedoR-Squared
-,18622.64113,18588.64113,19389.99938,NA
-,,,,
-,Estimate,Std. Error,z value,Pr(>|z|)
-(Intercept),-1.58,0.122,-12.907,0
-"new_inc_grp$150,000-$199,999",0.214,0.065,3.286,0.001
-"new_inc_grp$200,000+",0.381,0.063,6.032,0
-"new_inc_grp$25,000-$49,999",-0.358,0.066,-5.46,0
-"new_inc_grp$50,000-$74,999",-0.244,0.062,-3.903,0
-"new_inc_grp$75,000-$99,999",-0.143,0.062,-2.302,0.021
-new_inc_grpPrefer not to answer,-0.252,0.077,-3.272,0.001
-"new_inc_grpUnder $25,000",-0.544,0.085,-6.394,0
-,,,,
-hh_race_blackNot Black,0.214,0.11,1.946,0.052
-,,,,
-wrker_groupno workers,-0.108,0.061,-1.783,0.075
-,,,,
-no_vehiclesNo vehicles,0.143,0.052,2.754,0.006
-,,,,
-hhsize_grp2 people,0.655,0.044,14.773,0
-hhsize_grp3+ people,0.836,0.056,14.986,0
-,,,,
-n_shop_trips_grp1 hh shop trips,0.085,0.045,1.868,0.062
-n_shop_trips_grp2+ hh shop trips,0.116,0.048,2.433,0.015
-,,,,
-seattle_homeHome not in Seattle,-0.121,0.041,-2.977,0.003
-dist_super,0.031,0.035,0.898,0.369
+"V1","V2","V3","V4","V5"
+"glm, delivery ~ no_vehicles + hhsize_grp + n_shop_trips_grp + wrker_group + new_inc_grp + seattle_home + ln_jobs_auto_30 + hh_race_black, binomial, deliv_lu","AIC","Residual Deviance","Null deviance","McFadden/Nagel PseuedoR-Squared"
+"","18623.3962047796","18589.3962047796","19389.999383158",NA
+"","","","",""
+"","Estimate","Std. Error","z value","Pr(>|z|)"
+"(Intercept)","-1.289"," 0.342","-3.773"," 0.000"
+"no_vehiclesNo vehicles"," 0.141"," 0.052"," 2.699"," 0.007"
+"hhsize_grp2 people"," 0.657"," 0.044","14.844"," 0.000"
+"hhsize_grp3+ people"," 0.839"," 0.056","15.009"," 0.000"
+"n_shop_trips_grp1 hh shop trips"," 0.085"," 0.045"," 1.870"," 0.061"
+"n_shop_trips_grp2+ hh shop trips"," 0.116"," 0.048"," 2.438"," 0.015"
+"wrker_groupno workers","-0.103"," 0.061","-1.704"," 0.088"
+"new_inc_grp$150,000-$199,999"," 0.215"," 0.065"," 3.296"," 0.001"
+"new_inc_grp$200,000+"," 0.380"," 0.063"," 6.001"," 0.000"
+"new_inc_grp$25,000-$49,999","-0.359"," 0.066","-5.476"," 0.000"
+"new_inc_grp$50,000-$74,999","-0.246"," 0.062","-3.929"," 0.000"
+"new_inc_grp$75,000-$99,999","-0.143"," 0.062","-2.310"," 0.021"
+"new_inc_grpPrefer not to answer","-0.253"," 0.077","-3.287"," 0.001"
+"new_inc_grpUnder $25,000","-0.547"," 0.085","-6.436"," 0.000"
+"seattle_homeHome not in Seattle","-0.115"," 0.047","-2.462"," 0.014"
+"ln_jobs_auto_30","-0.050"," 0.243","-0.206"," 0.837"
+"hh_race_blackBlack","-0.217"," 0.110","-1.969"," 0.049"

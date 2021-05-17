@@ -24,7 +24,7 @@ library(DescTools)
 # in poverty, coming from the displacement risk analysis work.
 # it is checked in on github. You will need to point this variable to where it is
 # on your computer.
-displ_index_data<- 'J:/Projects/Surveys/HHTravel/Survey2019/Analysis/displacement/estimation_files/displacement_risk_estimation.csv'
+
 
 # This commented out file contains very detailed information about parcels.  For example,
 # it contains information for each parcel about the number of jobs within a half mile.
