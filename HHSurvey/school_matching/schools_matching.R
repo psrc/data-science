@@ -97,7 +97,7 @@ person_students_geo$distance = distance
 
 #matching schools that are above the threshold and have a valid school name entered by school name
 
-school_ids = list() 
+#school_ids2 = list() 
 for (i in 1:nrow(person_students_geo)) {
    if (person_students_geo$distance [i] > 500) {
       if (person_students_geo$school_name_from_survey[i] != "" ){
@@ -107,6 +107,7 @@ for (i in 1:nrow(person_students_geo)) {
           new_dist = as.numeric( st_distance(person_students_geo[i,], schools_geo[a,],by_element = TRUE))
           
           if(person_students_geo$distance[i] > new_dist){
+            print(person_students_geo$distance[i])
             print(new_dist)
             print(person_students_geo[i,])
             print(schools_geo[a,])
@@ -141,7 +142,7 @@ write.csv(not_matched_students, "not_matched_students.csv")
 
 # mapping the schools that didnt match
 
-m <- leaflet(students_and_schools_limited2)%>%
+m <- leaflet(students_and_schools_limited3)%>%
   addTiles() %>%
   addCircleMarkers(
     radius = 6,
@@ -149,8 +150,8 @@ m <- leaflet(students_and_schools_limited2)%>%
     stroke = FALSE, 
     opacity = 1,
    fillOpacity = 0.7,
-    popup = paste("School Name: ", students_and_schools_limited2$school_name_from_survey, ", age: ",students_and_schools_limited2$age, 
-                  ", assigned: ",students_and_schools_limited2$sname,sep="")) #%>% 
+    popup = paste("School Name: ", students_and_schools_limited3$school_name_from_survey, ", age: ",students_and_schools_limited3$age, 
+                  ", assigned: ",students_and_schools_limited3$sname,sep="")) #%>% 
 
 print(m)
 
