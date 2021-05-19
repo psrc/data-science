@@ -19,7 +19,7 @@ parcels <- read.csv("J:/Projects/Surveys/HHTravel/Survey2019/Data/schools/parcel
 # School matching ----------------------------------------------------------------
 
 # taking lat long of the reported school from the survey and matching to the closes one from the school table
-#using the euclidian distance. Taking into account age of the student and reported school name
+#using the euclidean distance. Taking into account age of the student and reported school name
 
 #filtering students only from person table
 
@@ -45,6 +45,8 @@ new_schools <- data.frame(school_id=max(schools$school_id)+1:13,
                                   -122.35822876012728, -122.37435957237449, -122.32659887900779, -122.52791779248497,-122.31450305603917, -122.02969266347733,
                                   -121.80101460197697))
 
+
+write.csv(new_schools, "J:/Projects/Surveys/HHTravel/Survey2019/Data/schools/Updated tables/upd_schools.csv")
 
 new_schools_geo <- st_as_sf(new_schools, coords = c("lon", "lat"), crs=4326)
 new_schools_geo$school_latlong = as.character(new_schools_geo$geometry)
@@ -115,7 +117,6 @@ for (i in 1:nrow(person_students_geo)) {
             person_students_geo$school_id[i] = schools_geo$school_id[a]
             person_students_geo$distance[i] = new_dist
             
-          #school_ids = append(school_ids, schools$school_id[a])
             }
         } 
       }
@@ -145,7 +146,9 @@ for (i in 1:nrow(students_and_schools)) {
   }
 }
 
-write.csv(person_students_geo, "person_schools.csv")
+students_and_schools$distance = as.numeric(students_and_schools$distance)
+
+write.csv(students_and_schools, "J:/Projects/Surveys/HHTravel/Survey2019/Data/schools/Updated tables/matched_students_schools.csv")
 
 #create a map of the invalid matches
 # In the map below we also filter out students  that are over 25 years old
