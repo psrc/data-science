@@ -63,7 +63,7 @@ for (i in 1:nrow(person_students_geo)) {
   
     if (person_students_geo$age[i] < 7) {
       school_queried = schools_geo %>% 
-                        filter(category %in% c("K","D","E","EM","EMH") )
+        filter(category %in% c("K","D","E","EM","EMH") )
     } else if ( person_students_geo$age[i] < 13 ) {
       school_queried = schools_geo %>% 
         filter(category %in% c("K","E","EM","EMH","M","MH","EMH") )
@@ -112,6 +112,9 @@ for (i in 1:nrow(person_students_geo)) {
             print(person_students_geo[i,])
             print(schools_geo[a,])
             
+            person_students_geo$school_id[i] = schools_geo$school_id[a]
+            person_students_geo$distance[i] = new_dist
+            
           #school_ids = append(school_ids, schools$school_id[a])
             }
         } 
@@ -121,21 +124,42 @@ for (i in 1:nrow(person_students_geo)) {
   
 
 
+#Finding the matches are invalid:
+# 1. That are above 500 m from assigned school AND
+# school name IS NOT equal to University of Washington (due to the greater university area) 
+
+
+students_and_schools = person_students_geo %>% 
+  mutate(school_id = as.integer(school_id)) %>% 
+  left_join(select(schools_upd, school_id, sname), by = "school_id") 
+
+# we insert -99 for invalid matches - there are 94 invalid matches (about 9% of all students)
+count = 0  
+for (i in 1:nrow(students_and_schools)) {
+  if (students_and_schools$distance [i] > 500 & students_and_schools$sname[i] != "University Of Washington") {
+    students_and_schools$school_id [i] = -99
+    students_and_schools$distance [i] = -99
+    students_and_schools$sname [i] = ""
+    count = count + 1
+    
+  }
+}
+
 write.csv(person_students_geo, "person_schools.csv")
+
+#create a map of the invalid matches
+# In the map below we also filter out students  that are over 25 years old
+
+students_and_schools_limited3 = students_and_schools %>% 
+  filter(distance >500 & sname != "University Of Washington") #%>% 
+  filter(age < 25)
+
 
 schools_geo$school_latlong = as.character(schools_geo$geometry)
 schools_upd = schools_geo
 st_geometry(schools_upd) = NULL
 
-students_and_schools = person_students_geo %>% 
-  mutate(school_id = as.integer(school_id)) %>% 
-  left_join(schools_upd, by = "school_id") %>% 
-  select("id","hhid","student","school_parcel_id","school_name_from_survey","school_address_from_survey","school_parcel_distance","edu","age","geometry",
-         "person_id","household_id","distance","school_id","category","sname","scity","school_latlong")
 
-students_and_schools_limited3 = students_and_schools %>% 
-  filter(distance >500 & sname != "University Of Washington") %>% 
-  filter(age < 25)
 
 write.csv(not_matched_students, "not_matched_students.csv")
 
@@ -155,7 +179,7 @@ m <- leaflet(students_and_schools_limited3)%>%
 
 print(m)
 
-# cehcking if the name matches - if not, search name in the school table. If the name didn't match, then school is not present in the school table.
+# testing - checking if the name matches - if not, search name in the school table. If the name didn't match, then school is not present in the school table.
 
 test = head(schools_geo, 100)
 
