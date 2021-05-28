@@ -9,19 +9,21 @@ setwd("~/GitHub/data-science/dissimilarity")
 dissim_index <- read.csv('dissim_bg.csv')
 sf_layer<- read.csv('sf_under10.csv')
 
-sf_threshold_low<-6
+sf_threshold_low<-3
 sf_threshold_high<-10
 
 summ<-summary(dissim_index)
 
-# Add a variable for defining single family as greater than 0, but less than 6 DU per acre
+sf_layer<-sf_layer %>% filter(MaxDU_Res>0)
+
+# Add a variable for defining single family as greater than 0, but less than some max DU per acre
 sf_layer<-sf_layer %>% mutate(
-  is_sf_6 = case_when(
+  is_sf_low = case_when(
     MaxDU_Res==0 ~ 0,
     MaxDU_Res>=sf_threshold_low ~ 0,
     MaxDU_Res>0 & MaxDU_Res<sf_threshold_low ~ 1
   ))%>%
-  mutate(is_sf_factor_6 = as.numeric(is_sf_6))
+  mutate(is_sf_factor_low = as.numeric(is_sf_low))
 
 # Add a variable for defining single family as greater than 0, but less than 10 DU per acre
 sf_layer<-sf_layer %>% mutate(
@@ -36,30 +38,30 @@ sf_layer<-sf_layer %>% mutate(
 
 dissim_vars<-merge(dissim_index, sf_layer, on='GEOID10')
 
-mean_6<-dissim_vars %>%
-  group_by(is_sf_6)%>%
-  summarize(mean_white_minority_dissim_6=mean(White_Minority_Dissim))
+mean_low<-dissim_vars %>%
+  group_by(is_sf_low)%>%
+  summarize(mean_white_minority_dissim_low=mean(White_Minority_Dissim))
 
 dissim_vars %>%
-  group_by(is_sf_6)%>%
-  summarize(mean_white_black_dissim_6=mean(White_Black_Dissim))
+  group_by(is_sf_low)%>%
+  summarize(mean_white_black_dissim_low=mean(White_Black_Dissim))
 
 
-white_min_6<-lm(White_Minority_Dissim ~ is_sf_factor_6, data=dissim_vars)
-summary(white_min_6, scale = TRUE)
+white_min_low<-lm(White_Minority_Dissim ~ is_sf_factor_low, data=dissim_vars)
+summary(white_min_low, scale = TRUE)
 
 
 #https://statisticsbyjim.com/basics/correlations/
 
-cor.test(dissim_vars$White_Minority_Dissim, dissim_vars$is_sf_6,
+cor.test(dissim_vars$White_Minority_Dissim, dissim_vars$is_sf_low,
          method = "spearman")
 
-cor.test(dissim_vars$White_Black_Dissim, dissim_vars$is_sf_6,
+cor.test(dissim_vars$White_Black_Dissim, dissim_vars$is_sf_low,
          method = "spearman")
 
 
-white_black_6<-lm(White_Black_Dissim ~ is_sf_factor_6, data=dissim_vars)
-summary(white_black_6, scale = TRUE)
+white_black_low<-lm(White_Black_Dissim ~ is_sf_factor_low, data=dissim_vars)
+summary(white_black_low, scale = TRUE)
 
 cor.test(dissim_vars$White_Black_Dissim, dissim_vars$is_sf_10,
          method = "spearman")
