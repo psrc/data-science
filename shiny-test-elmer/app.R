@@ -32,6 +32,7 @@ read.dt <- function(astring, type =c('table_name', 'sqlquery')) {
 
 
 ui <- fluidPage(
+"This is a test to see about reading in and writing out data to SQL Server using R Shiny",
 numericInput("nrows", "Enter the number of person table rows to display:", 5),
 DTOutput("tbl"),
 numericInput("person_in", "Enter the person_id of the record you want to change", 19100000101),
