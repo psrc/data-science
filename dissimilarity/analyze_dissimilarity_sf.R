@@ -2,12 +2,63 @@ library(dplyr)
 library(corrr)
 library(writexl)
 library(ggplot2)
-
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(tidycensus)
+library(writexl)
+library(htmlwidgets)
 
 setwd("~/GitHub/data-science/dissimilarity")
 
+
+flu<- st_read('C:/Users/SChildress/Documents/ReferenceResearch/displacement/diss_flu16.shp')
+
+flu_df<-as.data.frame(flu)
 dissim_index <- read.csv('dissim_bg.csv')
-sf_layer<- read.csv('sf_under10.csv')
+
+flu_df$GEOID10<- as.numeric(flu_df$GEOID10)
+flu_df<-flu_df%>%drop_na(GEOID10)
+
+flu_df<-flu_df%>%group_by(GEOID10)%>%
+  summarise(max_max_du=max(max_du_ac), min_max_du=min(max_du_ac), mean_max_du=mean(max_du_ac))
+
+flu_dissim<-merge(flu_df, dissim_index, by ="GEOID10")
+
+flus
+
+white_min<-lm(White_Minority_Dissim ~ max_max_du, data=flu_dissim)
+
+
+cor.test(flu_dissim$White_Minority_Dissim, flu_dissim$max_max_du,
+         method = "spearman")
+
+cor.test(flu_dissim$White_Black_Dissim, flu_dissim$max_max_du,
+         method = "spearman")
+
+
+ggplot(flu_dissim, aes(x=max_max_du, y=White_Black_Dissim))+
+  geom_point()+
+  geom_smooth(method=lm, formula='y ~poly(x,2)')
+
+ggplot(flu_dissim, aes(x=min_max_du, y=White_Black_Dissim))+
+  geom_point()+
+  geom_smooth(method=lm, formula='y ~poly(x,2)')
+
+ggplot(flu_dissim, aes(x=mean_max_du, y=White_Black_Dissim))+
+  geom_point()+
+  geom_smooth(method=lm, formula='y ~poly(x,2)')
+
+ggplot(dissim_vars, aes(x=White_Black_Dissim)) + geom_histogram()
+
+ggplot(dissim_vars, aes(x=White_Minority_Dissim)) + geom_histogram()
+
+white_black_lm<-lm(White_Black_Dissim ~ MaxDU_Res, data=dissim_vars)
+summary(white_black_lm, scale = TRUE)
+
 
 sf_threshold_low<-3
 sf_threshold_high<-10
@@ -88,13 +139,3 @@ cor.test(dissim_vars$White_Black_Dissim, dissim_vars$is_sf_10,
          method = "spearman")
 
 
-ggplot(dissim_vars, aes(x=MaxDU_Res, y=White_Black_Dissim))+
-  geom_point()+
-  geom_smooth(method=lm)
-
-ggplot(dissim_vars, aes(x=White_Black_Dissim)) + geom_histogram()
-
-ggplot(dissim_vars, aes(x=White_Minority_Dissim)) + geom_histogram()
-
-white_black_lm<-lm(White_Black_Dissim ~ MaxDU_Res, data=dissim_vars)
-summary(white_black_lm, scale = TRUE)

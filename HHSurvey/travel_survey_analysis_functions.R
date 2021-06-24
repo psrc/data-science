@@ -88,7 +88,7 @@ cross_tab_categorical <- function(table, var1, var2, wt_field) {
 categorical_moe <- function(sample_size_group){
   sample_w_MOE<-sample_size_group %>%
     mutate(p_col=p_MOE) %>%
-    mutate(MOE_calc1= (p_col*(1-p_col))/sample_size) %>%
+    mutate(MOE_calc1= (p_col*(1-p_col))/sample_size_group) %>%
     mutate(MOE_Percent=z*sqrt(MOE_calc1))
   
   sample_w_MOE<- select(sample_w_MOE, -c(p_col, MOE_calc1))

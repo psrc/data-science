@@ -1,0 +1,266 @@
+---
+title: "Analyzing the Dissimilarity Indices for the PSRC region"
+author: "Data Science"
+date: "June 2021"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Does Single Family Zoning correlate with greater segregation?
+
+The dissimilarity index was calculated at a block group level. The Future Land Use Layer was used to represent zoning with the field Max Dwelling Units per Acre.
+
+So from a technical standpoint, we are looking into:
+
+### Does the Maximum Dwelling Units per Acre in a Block Group correlate with the Dissimilarity Index of the Block Group?
+
+### 
+
+The segregation measure is a set of dissimilarity indices between racial groups. Between any two groups a measure of dissimilarity is calculated for each block group. More documentation can be found here: <https://www.censusscope.org/about_dissimilarity.html>
+
+```{r data_prep, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+library(dplyr)
+library(corrr)
+library(writexl)
+library(openxlsx)
+library(ggplot2)
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(tidycensus)
+library(writexl)
+library(htmlwidgets)
+library(Hmisc)
+
+setwd("~/GitHub/data-science/dissimilarity")
+
+
+flu<- st_read('C:/Users/SChildress/Documents/ReferenceResearch/displacement/diss_flu16.shp')
+
+flu_df<-as.data.frame(flu)
+dissim_index <- read.csv('dissim_bg.csv')
+
+flu_df$GEOID10<- as.numeric(flu_df$GEOID10)
+flu_df<-flu_df%>%drop_na(GEOID10)
+
+```
+
+Because the future land use layer and the block groups do not match up geographically, I needed to do an aggregation to get a one to one match between the future land use and the block groups. For this, I found the max, min, and mean maximum du for a block group for all intersecting flu areas.
+
+```{r summarize_vars, echo=FALSE}
+flu_df<-flu_df%>%group_by(GEOID10)%>% arrange(desc(max_du_ac))%>%summarise(max_max_du=first(max_du_ac), min_max_du=last(max_du_ac), mean_max_du=mean(max_du_ac))
+# remove 0s, these represent geographic mismatches
+flu_df <- flu_df %>% filter(max_max_du!=0)
+flu_dissim<-merge(flu_df, dissim_index, by ="GEOID10")
+
+
+describe(flu_dissim$max_max_du)
+describe(flu_dissim$min_max_du)
+describe(flu_dissim$mean_max_du)
+
+describe(flu_dissim$White_Black_Dissim)
+describe(flu_dissim$White_Minority_Dissim)
+
+ggplot(flu_dissim, aes(x=max_max_du)) + geom_histogram(bins=100)
+ggplot(flu_dissim, aes(x=min_max_du)) + geom_histogram(bins=100)
+ggplot(flu_dissim, aes(x=mean_max_du)) + geom_histogram(bins=100)
+ggplot(flu_dissim, aes(x=White_Black_Dissim)) + geom_histogram(bins=100)
+ggplot(flu_dissim, aes(x=White_Minority_Dissim)) + geom_histogram(bins=100)
+
+
+```
+
+There are long tails on the max dus. I'm going to cap them at 100. I think I'll use max_max_du at this point too.
+
+```{r more_analysis}
+
+flu_dissim<- flu_dissim %>%mutate(max_max_du_capped=replace(max_max_du,max_max_du>100,100))
+
+ggplot(flu_dissim, aes(x=max_max_du_capped)) + geom_histogram(bins=100)
+
+ggplot(flu_dissim, aes(x=max_max_du_capped, y=White_Black_Dissim))+
+  geom_point()+
+  geom_smooth(method=lm, formula='y ~poly(x,3)')
+
+ggplot(flu_dissim, aes(x=max_max_du_capped, y=White_Minority_Dissim))+
+  geom_point()+
+  geom_smooth(method=lm, formula='y ~poly(x,3)')
+
+```
+
+It looks like:
+
+With max DUs ranging from 0 to 25, as the max DUs increases, the White-Black Dissimilarity decreases, and gets closer to 0, meaning less White shares, and more integration.
+
+Also with max Dus ranging from 75 to 100 as the max DUs increases, the White-Black Dissimilarity decreases, and becomes more negative, meaning less White shares, but more segregation of People of Color (I think this is what it means).
+
+```{r stat tests}
+
+cor.test(flu_dissim$White_Minority_Dissim, flu_dissim$max_max_du,
+         method = "spearman")
+
+cor.test(flu_dissim$White_Black_Dissim, flu_dissim$max_max_du,
+         method = "spearman")
+
+cor.test(flu_dissim$White_AIAN_Dissim, flu_dissim$max_max_du,
+         method = "spearman")
+
+```
+
+On the total range of DUs per acre the correlation is weak.
+
+```{r thresholds}
+
+sf_threshold_low<-6
+
+
+
+# Add a variable for defining single family as greater than 0, but less than some max DU per acre
+flu_dissim<-flu_dissim %>% mutate(
+  is_sf_low = case_when(
+    max_max_du>=sf_threshold_low ~ 0,
+    max_max_du<sf_threshold_low ~ 1
+  ))%>%
+  mutate(is_sf_factor_low = as.numeric(is_sf_low))
+
+
+mean_low<-flu_dissim %>%
+  group_by(is_sf_low)%>%
+  summarise(mean_white_minority_dissim_low=mean(White_Minority_Dissim))
+
+flu_dissim %>%
+  group_by(is_sf_low)%>%
+  summarise(mean_white_black_dissim_low=mean(White_Black_Dissim))
+
+flu_dissim %>%
+  group_by(is_sf_low)%>%
+  summarise(mean_white_aian_dissim_low=mean(White_AIAN_Dissim))
+
+
+cor.test(flu_dissim$White_Minority_Dissim, flu_dissim$is_sf_low,
+         method = "spearman")
+
+cor.test(flu_dissim$White_Black_Dissim, flu_dissim$is_sf_low,
+         method = "spearman")
+cor.test(flu_dissim$White_AIAN_Dissim, flu_dissim$is_sf_low,
+         method = "spearman")
+
+
+anova_sf_white_black = aov(White_Black_Dissim ~is_sf_low, data=flu_dissim)
+anova_sf_white_minority = aov(White_Black_Dissim ~is_sf_low, data=flu_dissim)
+anova_sf_white_aian = aov(White_AIAN_Dissim ~is_sf_low, data=flu_dissim)
+summary(anova_sf_white_aian)
+summary(anova_sf_white_minority)
+summary(anova_sf_white_black)
+
+```
+
+This is not producing much correlation. What if we try a multibreak point approach: 0-3 DUs low sf, 3-6 med sf, 6-10 high sf, 10-25 low mf, 25-75 med mf, 75+ high mf.
+
+```{r multibreak approach}
+
+low_sf<-3
+med_sf<-6
+high_sf<-10
+low_mf<-25
+med_mf<-75
+
+
+# Add a variable for defining single family as greater than 0, but less than some max DU per acre
+flu_dissim<-flu_dissim %>% mutate(sf_mf_cats = case_when(
+    max_max_du<=low_sf ~ "Low_SF",
+    max_max_du<=med_sf ~ "Med_SF",
+    max_max_du<=high_sf ~ "High_SF",
+    max_max_du<=low_mf ~ "Low_MF",
+    max_max_du<=med_mf ~ "Med_MF",
+    max_max_du>=med_mf ~ "High_MF"
+  ))
+
+flu_dissim$sf_mf_cats <-factor(flu_dissim$sf_mf_cats, levels=c("Low_SF", "Med_SF",
+                                                               "High_SF", "Low_MF",
+                                                               "Med_MF", "High_MF"))
+
+flu_dissim %>% group_by(sf_mf_cats) %>% summarise(mean_dissim_white_black=mean(White_Black_Dissim))
+
+du_cat_dissim<-ggplot(flu_dissim, aes(x=sf_mf_cats, y=White_Black_Dissim))+geom_boxplot()
+
+du_cat_dissim
+```
+
+It looks like a few categories can be collapsed. Med_SF/High_SF,
+
+```{r multibreak2}
+  
+low_sf<-3
+med_high_sf<-10
+low_mf<-25
+med_mf<-75
+
+
+# Add a variable for defining single family as greater than 0, but less than some max DU per acre
+flu_dissim<-flu_dissim %>% mutate(sf_mf_cats = case_when(
+    max_max_du<=low_sf ~ "Low_SF (less than 3 Du per acre)",
+    max_max_du<=med_high_sf ~ "Med_High_SF (3-10)",
+    max_max_du<=low_mf ~  "Low_MF (10-25)",
+    max_max_du<=med_mf ~ "Med_MF(25-75)",
+    max_max_du>=med_mf ~ "High_MF(75+)"
+  ))
+
+flu_dissim$sf_mf_cats <-factor(flu_dissim$sf_mf_cats, levels=c("Low_SF (less than 3 Du per acre)",
+                                                               "Med_High_SF (3-10)",
+                                                                "Low_MF (10-25)",
+                                                               "Med_MF(25-75)",
+                                                               "High_MF(75+)"))
+
+flu_dissim %>% group_by(sf_mf_cats) %>% summarise(mean_dissim_white_black=mean(White_Black_Dissim))
+
+du_cat_dissim<-ggplot(flu_dissim, aes(x=sf_mf_cats, y=White_Black_Dissim))+geom_boxplot()
+
+
+du_cat_dissim_aian<-ggplot(flu_dissim, aes(x=sf_mf_cats, y=White_AIAN_Dissim))+geom_boxplot()
+```
+
+```{r estimate_model_with_more_Vars}
+acs_rent_inc = read.csv("C:/Users/SChildress/Documents/GitHub/data-science/dissimilarity/census_tract_vars.csv")
+
+
+# housing_policy<-read.xlsx("C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/estimation_displace/housing_policy_city.xlsx")
+# 
+# housing_policy[is.na(housing_policy)]<-0
+# housing_policy[housing_policy=='x']<-1
+
+
+flu_dissim$GEOID10 <- as.character(flu_dissim$GEOID10)
+acs_rent_inc$GEOID <- as.character(acs_rent_inc$GEOID)
+flu_dissim <- merge(flu_dissim,acs_rent_inc, by.x='GEOID10', by.y='GEOID', all.x=TRUE)
+
+
+
+```
+
+```{r}
+flu_dissim_model<-glm(White_Black_Dissim ~ sf_mf_cats,
+                 data=flu_dissim)
+
+
+```
+
+<https://datascience.stackexchange.com/questions/893/how-to-get-correlation-between-two-categorical-variable-and-a-categorical-variab>
+
+Looking to the correlation between the categories and the dissimiliarity index with a statistical test.
+
+```{r anova}
+
+anova = aov(White_Black_Dissim ~sf_mf_cats, data=flu_dissim)
+summary(anova)
+mean_low
+```
