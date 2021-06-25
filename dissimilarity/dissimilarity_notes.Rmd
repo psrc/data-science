@@ -238,9 +238,9 @@ acs_rent_inc = read.csv("C:/Users/SChildress/Documents/GitHub/data-science/dissi
 # housing_policy[is.na(housing_policy)]<-0
 # housing_policy[housing_policy=='x']<-1
 
-
-flu_dissim$GEOID10 <- as.character(flu_dissim$GEOID10)
-acs_rent_inc$GEOID <- as.character(acs_rent_inc$GEOID)
+options(scipen=999)
+#flu_dissim$GEOID10 <- as.character(flu_dissim$GEOID10)
+#acs_rent_inc$GEOID <- as.character(acs_rent_inc$GEOID)
 flu_dissim <- merge(flu_dissim,acs_rent_inc, by.x='GEOID10', by.y='GEOID', all.x=TRUE)
 
 

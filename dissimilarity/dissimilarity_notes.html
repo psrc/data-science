@@ -441,16 +441,17 @@ du_cat_dissim_aian&lt;-ggplot(flu_dissim, aes(x=sf_mf_cats, y=White_AIAN_Dissim)
 <pre class="r"><code>acs_rent_inc = read.csv(&quot;C:/Users/SChildress/Documents/GitHub/data-science/dissimilarity/census_tract_vars.csv&quot;)
 
 
-housing_policy&lt;-read.xlsx(&quot;C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/estimation_displace/housing_policy_city.xlsx&quot;)
+# housing_policy&lt;-read.xlsx(&quot;C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/estimation_displace/housing_policy_city.xlsx&quot;)
+# 
+# housing_policy[is.na(housing_policy)]&lt;-0
+# housing_policy[housing_policy==&#39;x&#39;]&lt;-1
 
-housing_policy[is.na(housing_policy)]&lt;-0
-housing_policy[housing_policy==&#39;x&#39;]&lt;-1
 
-
-flu_dissim$GEOID10 &lt;- as.character(flu_dissim$GEOID10)
-acs_rent_inc$GEOID &lt;- as.character(acs_rent_inc$GEOID)
+#flu_dissim$GEOID10 &lt;- as.character(flu_dissim$GEOID10)
+#acs_rent_inc$GEOID &lt;- as.character(acs_rent_inc$GEOID)
 flu_dissim &lt;- merge(flu_dissim,acs_rent_inc, by.x=&#39;GEOID10&#39;, by.y=&#39;GEOID&#39;, all.x=TRUE)</code></pre>
-<pre><code></code></pre>
+<pre class="r"><code>flu_dissim_model&lt;-glm(White_Black_Dissim ~ sf_mf_cats,
+                 data=flu_dissim)</code></pre>
 <p><a href="https://datascience.stackexchange.com/questions/893/how-to-get-correlation-between-two-categorical-variable-and-a-categorical-variab" class="uri">https://datascience.stackexchange.com/questions/893/how-to-get-correlation-between-two-categorical-variable-and-a-categorical-variab</a></p>
 <p>Looking to the correlation between the categories and the dissimiliarity index with a statistical test.</p>
 <pre class="r"><code>anova = aov(White_Black_Dissim ~sf_mf_cats, data=flu_dissim)
