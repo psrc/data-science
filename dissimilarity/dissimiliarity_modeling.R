@@ -110,8 +110,8 @@ summary(dissim_big_lm)
 plot_summs(dissim_big_lm, scale = TRUE)
 
 
-dissim_white_min_lm<-lm(White_Minority_Dissim~ TP+MFP+PAP+sf_mf_cats+no_bachelors+rent+
-                    poverty_200+ln_jobs_auto_30+ln_jobs_transit_45+
+dissim_white_min_lm<-lm(White_Minority_Dissim~ TP+MFP+PAP+
+                    ln_jobs_auto_30+ln_jobs_transit_45+
                     dist_super+dist_park+
                    +voting,
                   data=flu_dissim_housing_policy)
