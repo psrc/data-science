@@ -56,16 +56,19 @@ write.table(sig_test, "clipboard", sep='\t', row.names=FALSE)
 ## Pearson correlation between dissimilarity indexes and % single family zoning.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
+# sig_test_pearson<-lapply(yvar,
+#        function(yvar, xvar, res_diss)
+#        {
+#          cor.test(res_diss[[xvar]], res_diss[[yvar]], method='pearson') %>%
+#            tidy()
+#        },
+#        xvar,
+#        res_diss) %>%
+# ```
 
-sig_test_pearson<-lapply(yvar,
-       function(yvar, xvar, res_diss)
-       {
-         cor.test(res_diss[[xvar]], res_diss[[yvar]], method='pearson') %>%
-           tidy()
-       },
-       xvar,
-       res_diss) %>%
-  bind_rows()%>%mutate('dissimiliarity_index'=dissim_names)%>%select(-c(statistic, conf.low, conf.high))
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+bind_rows()%>%mutate('dissimiliarity_index'=dissim_names)%>%select(-c(statistic, conf.low, conf.high))
 
 sig_test_pearson
 write.table(sig_test_pearson, "clipboard", sep='\t', row.names=FALSE)
@@ -161,4 +164,63 @@ print(ggplot(res_diss, aes_string(x='prct_sf', y=name))+
   geom_point()+
   geom_smooth(method=lm, formula='y ~poly(x,3)'))
 }
+```
+```{r}
+res_diss_seattle<-res_diss_seattle %>% mutate(
+  sf_or_not= case_when(
+    prct_sf<1~ 'Less than 100% single family zoning',
+    prct_sf==1 ~ '100% single family zoning'
+  ))
+res_diss_seattle<-res_diss_seattle %>% mutate(
+  sf_or_not= case_when(
+    prct_sf<1~ 'Less than 100% single family zoning',
+    prct_sf==1 ~ '100% single family zoning'
+  ))
+
+res_diss_grouped<-res_diss_seattle %>%group_by(sf_or_not)%>%summarize_at(dissim_names, mean, na.rm=TRUE)
+write.table(res_diss_grouped, 'clipboard', sep='\t', row.names=FALSE )
+```
+
+
+```{r}
+res_diss<-res_diss %>% mutate(
+  sf_or_not= case_when(
+    prct_sf<1~ 'Less than 100% single family zoning',
+    prct_sf==1 ~ '100% single family zoning'
+  ))
+```
+```{r}
+res_diss_grouped<-res_diss %>%group_by(sf_or_not)%>%summarize_at(dissim_names, mean, na.rm=TRUE)
+write.table(res_diss_grouped, 'clipboard', sep='\t', row.names=FALSE )
+```
+
+
+```{r}
+
+```{r}
+res_diss_grouped<-res_diss %>%group_by(sf_or_not)%>%summarize_at(dissim_names, mean, na.rm=TRUE)
+write.table(res_diss_grouped, 'clipboard', sep='\t', row.names=FALSE )
+
+```
+
+
+```
+```{r}
+
+res_diss_seattle<-res_diss_seattle %>% mutate(
+  sf_or_not= case_when(
+    prct_sf<1~ 'Less than 100% single family zoning',
+    prct_sf==1 ~ '100% single family zoning'
+  ))
+res_diss_seattle<-res_diss_seattle %>% mutate(
+  sf_or_not= case_when(
+    prct_sf<1~ 'Less than 100% single family zoning',
+    prct_sf==1 ~ '100% single family zoning'
+  ))
+```{r}
+
+```
+
+res_diss_grouped<-res_diss_seattle %>%group_by(sf_or_not)%>%summarize_at(dissim_names, mean, na.rm=TRUE)
+write.table(res_diss_grouped, 'clipboard', sep='\t', row.names=FALSE )
 ```

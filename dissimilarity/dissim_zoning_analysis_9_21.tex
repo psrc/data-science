@@ -1,0 +1,678 @@
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+%
+\documentclass[
+]{article}
+\usepackage{amsmath,amssymb}
+\usepackage{lmodern}
+\usepackage{ifxetex,ifluatex}
+\ifnum 0\ifxetex 1\fi\ifluatex 1\fi=0 % if pdftex
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math}
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+\usepackage{xcolor}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\IfFileExists{bookmark.sty}{\usepackage{bookmark}}{\usepackage{hyperref}}
+\hypersetup{
+  pdftitle={dissim\_sf\_share},
+  pdfauthor={suzanne},
+  hidelinks,
+  pdfcreator={LaTeX via pandoc}}
+\urlstyle{same} % disable monospaced font for URLs
+\usepackage[margin=1in]{geometry}
+\usepackage{color}
+\usepackage{fancyvrb}
+\newcommand{\VerbBar}{|}
+\newcommand{\VERB}{\Verb[commandchars=\\\{\}]}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{commandchars=\\\{\}}
+% Add ',fontsize=\small' for more characters per line
+\usepackage{framed}
+\definecolor{shadecolor}{RGB}{248,248,248}
+\newenvironment{Shaded}{\begin{snugshade}}{\end{snugshade}}
+\newcommand{\AlertTok}[1]{\textcolor[rgb]{0.94,0.16,0.16}{#1}}
+\newcommand{\AnnotationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\AttributeTok}[1]{\textcolor[rgb]{0.77,0.63,0.00}{#1}}
+\newcommand{\BaseNTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\BuiltInTok}[1]{#1}
+\newcommand{\CharTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\CommentTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textit{#1}}}
+\newcommand{\CommentVarTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\ConstantTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\ControlFlowTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{\textbf{#1}}}
+\newcommand{\DataTypeTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{#1}}
+\newcommand{\DecValTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\DocumentationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\ErrorTok}[1]{\textcolor[rgb]{0.64,0.00,0.00}{\textbf{#1}}}
+\newcommand{\ExtensionTok}[1]{#1}
+\newcommand{\FloatTok}[1]{\textcolor[rgb]{0.00,0.00,0.81}{#1}}
+\newcommand{\FunctionTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\ImportTok}[1]{#1}
+\newcommand{\InformationTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\newcommand{\KeywordTok}[1]{\textcolor[rgb]{0.13,0.29,0.53}{\textbf{#1}}}
+\newcommand{\NormalTok}[1]{#1}
+\newcommand{\OperatorTok}[1]{\textcolor[rgb]{0.81,0.36,0.00}{\textbf{#1}}}
+\newcommand{\OtherTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{#1}}
+\newcommand{\PreprocessorTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textit{#1}}}
+\newcommand{\RegionMarkerTok}[1]{#1}
+\newcommand{\SpecialCharTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\SpecialStringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\StringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\VariableTok}[1]{\textcolor[rgb]{0.00,0.00,0.00}{#1}}
+\newcommand{\VerbatimStringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
+\newcommand{\WarningTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
+\usepackage{graphicx}
+\makeatletter
+\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\def\maxheight{\ifdim\Gin@nat@height>\textheight\textheight\else\Gin@nat@height\fi}
+\makeatother
+% Scale images if necessary, so that they will not overflow the page
+% margins by default, and it is still possible to overwrite the defaults
+% using explicit options in \includegraphics[width, height, ...]{}
+\setkeys{Gin}{width=\maxwidth,height=\maxheight,keepaspectratio}
+% Set default figure placement to htbp
+\makeatletter
+\def\fps@figure{htbp}
+\makeatother
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\setcounter{secnumdepth}{-\maxdimen} % remove section numbering
+\ifluatex
+  \usepackage{selnolig}  % disable illegal ligatures
+\fi
+
+\title{dissim\_sf\_share}
+\author{suzanne}
+\date{9/21/2021}
+
+\begin{document}
+\maketitle
+
+\hypertarget{dissimilarity-indices-vs-share-of-single-family-zoning}{%
+\subsection{Dissimilarity indices vs share of single family
+zoning}\label{dissimilarity-indices-vs-share-of-single-family-zoning}}
+
+In this analysis, we are comparing the dissimilarity indices at the
+block group level to zoning. Because the zoning and the block groups
+don't match up, we found the residentail share of the block group
+defined as single family (\textgreater8.7 DU per acre)
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{setwd}\NormalTok{(}\StringTok{"\textasciitilde{}/GitHub/data{-}science/dissimilarity"}\NormalTok{)}
+
+\FunctionTok{library}\NormalTok{(broom)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'broom' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(dplyr)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'dplyr' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## 
+## Attaching package: 'dplyr'
+\end{verbatim}
+
+\begin{verbatim}
+## The following objects are masked from 'package:stats':
+## 
+##     filter, lag
+\end{verbatim}
+
+\begin{verbatim}
+## The following objects are masked from 'package:base':
+## 
+##     intersect, setdiff, setequal, union
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(corrr)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'corrr' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(ggplot2)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'ggplot2' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(tidyverse)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'tidyverse' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## -- Attaching packages --------------------------------------- tidyverse 1.3.1 --
+\end{verbatim}
+
+\begin{verbatim}
+## v tibble  3.1.4     v purrr   0.3.4
+## v tidyr   1.1.3     v stringr 1.4.0
+## v readr   2.0.1     v forcats 0.5.1
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'tibble' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'tidyr' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## -- Conflicts ------------------------------------------ tidyverse_conflicts() --
+## x dplyr::filter() masks stats::filter()
+## x dplyr::lag()    masks stats::lag()
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(Hmisc)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'Hmisc' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Loading required package: lattice
+\end{verbatim}
+
+\begin{verbatim}
+## Loading required package: survival
+\end{verbatim}
+
+\begin{verbatim}
+## Loading required package: Formula
+\end{verbatim}
+
+\begin{verbatim}
+## 
+## Attaching package: 'Hmisc'
+\end{verbatim}
+
+\begin{verbatim}
+## The following objects are masked from 'package:dplyr':
+## 
+##     src, summarize
+\end{verbatim}
+
+\begin{verbatim}
+## The following objects are masked from 'package:base':
+## 
+##     format.pval, units
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(DBI)}
+\FunctionTok{library}\NormalTok{(odbc)}
+\NormalTok{res\_diss}\OtherTok{\textless{}{-}}\FunctionTok{read.csv}\NormalTok{(}\StringTok{\textquotesingle{}res\_diss.csv\textquotesingle{}}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{xvar }\OtherTok{\textless{}{-}} \StringTok{"prct\_sf"}
+\NormalTok{dissim\_names}\OtherTok{\textless{}{-}}\FunctionTok{c}\NormalTok{(}\StringTok{\textquotesingle{}White\_\_Black\textquotesingle{}}\NormalTok{, }\StringTok{\textquotesingle{}White\_AIAN\textquotesingle{}}\NormalTok{, }\StringTok{\textquotesingle{}White\_\_API\textquotesingle{}}\NormalTok{,  }\StringTok{\textquotesingle{}White\_\_Hispanic\textquotesingle{}}\NormalTok{, }\StringTok{\textquotesingle{}White\_\_Minority\textquotesingle{}}\NormalTok{,  }\StringTok{\textquotesingle{}Black\_\_AIAN\textquotesingle{}}\NormalTok{,  }\StringTok{\textquotesingle{}Black\_\_API\textquotesingle{}}\NormalTok{,   }\StringTok{\textquotesingle{}Black\_\_Other\_2\_\textquotesingle{}}\NormalTok{,}\StringTok{\textquotesingle{}Black\_\_Hispanic\textquotesingle{}}\NormalTok{,    }\StringTok{\textquotesingle{}AIAN\_\_Asian\textquotesingle{}}\NormalTok{,  }\StringTok{\textquotesingle{}AIAN\_\_Other\_2\_\textquotesingle{}}\NormalTok{,}\StringTok{\textquotesingle{}AIAN\_\_Hispanic\textquotesingle{}}\NormalTok{,  }\StringTok{\textquotesingle{}API\_\_Other\_2\_\textquotesingle{}}\NormalTok{ ,   }\StringTok{\textquotesingle{}API\_\_Hispanic\textquotesingle{}}\NormalTok{,    }\StringTok{\textquotesingle{}Other\_2\_\_\_Hispanic\textquotesingle{}}
+\NormalTok{)}
+\NormalTok{yvar }\OtherTok{\textless{}{-}} \FunctionTok{names}\NormalTok{(res\_diss)[}\FunctionTok{names}\NormalTok{(res\_diss) }\SpecialCharTok{\%in\%}\NormalTok{ dissim\_names]}
+
+\NormalTok{sig\_test}\OtherTok{\textless{}{-}}\FunctionTok{lapply}\NormalTok{(yvar,}
+       \ControlFlowTok{function}\NormalTok{(yvar, xvar, res\_diss)}
+\NormalTok{       \{}
+         \FunctionTok{print}\NormalTok{(yvar)}
+         \FunctionTok{cor.test}\NormalTok{(res\_diss[[xvar]], res\_diss[[yvar]], }\AttributeTok{method=}\StringTok{\textquotesingle{}spearman\textquotesingle{}}\NormalTok{) }\SpecialCharTok{\%\textgreater{}\%}
+           \FunctionTok{tidy}\NormalTok{()}
+\NormalTok{       \},}
+\NormalTok{       xvar,}
+\NormalTok{       res\_diss) }\SpecialCharTok{\%\textgreater{}\%}
+  \FunctionTok{bind\_rows}\NormalTok{() }\SpecialCharTok{\%\textgreater{}\%}\FunctionTok{mutate}\NormalTok{(}\StringTok{\textquotesingle{}dissimiliarity\_index\textquotesingle{}}\OtherTok{=}\NormalTok{dissim\_names)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] "White__Black"
+\end{verbatim}
+
+\begin{verbatim}
+## Warning in cor.test.default(res_diss[[xvar]], res_diss[[yvar]], method =
+## "spearman"): Cannot compute exact p-value with ties
+\end{verbatim}
+
+\begin{verbatim}
+## [1] "White_AIAN"
+\end{verbatim}
+
+\begin{verbatim}
+## Warning in cor.test.default(res_diss[[xvar]], res_diss[[yvar]], method =
+## "spearman"): Cannot compute exact p-value with ties
+\end{verbatim}
+
+\begin{verbatim}
+## [1] "White__API"
+\end{verbatim}
+
+\begin{verbatim}
+## Warning in cor.test.default(res_diss[[xvar]], res_diss[[yvar]], method =
+## "spearman"): Cannot compute exact p-value with ties
+\end{verbatim}
+
+\begin{verbatim}
+## [1] "White__Hispanic"
+\end{verbatim}
+
+\begin{verbatim}
+## Warning in cor.test.default(res_diss[[xvar]], res_diss[[yvar]], method =
+## "spearman"): Cannot compute exact p-value with ties
+\end{verbatim}
+
+\begin{verbatim}
+## [1] "White__Minority"
+\end{verbatim}
+
+\begin{verbatim}
+## Warning in cor.test.default(res_diss[[xvar]], res_diss[[yvar]], method =
+## "spearman"): Cannot compute exact p-value with ties
+\end{verbatim}
+
+\begin{verbatim}
+## [1] "Black__AIAN"
+\end{verbatim}
+
+\begin{verbatim}
+## Warning in cor.test.default(res_diss[[xvar]], res_diss[[yvar]], method =
+## "spearman"): Cannot compute exact p-value with ties
+\end{verbatim}
+
+\begin{verbatim}
+## [1] "Black__API"
+\end{verbatim}
+
+\begin{verbatim}
+## Warning in cor.test.default(res_diss[[xvar]], res_diss[[yvar]], method =
+## "spearman"): Cannot compute exact p-value with ties
+\end{verbatim}
+
+\begin{verbatim}
+## [1] "Black__Other_2_"
+\end{verbatim}
+
+\begin{verbatim}
+## Warning in cor.test.default(res_diss[[xvar]], res_diss[[yvar]], method =
+## "spearman"): Cannot compute exact p-value with ties
+\end{verbatim}
+
+\begin{verbatim}
+## [1] "Black__Hispanic"
+\end{verbatim}
+
+\begin{verbatim}
+## Warning in cor.test.default(res_diss[[xvar]], res_diss[[yvar]], method =
+## "spearman"): Cannot compute exact p-value with ties
+\end{verbatim}
+
+\begin{verbatim}
+## [1] "AIAN__Asian"
+\end{verbatim}
+
+\begin{verbatim}
+## Warning in cor.test.default(res_diss[[xvar]], res_diss[[yvar]], method =
+## "spearman"): Cannot compute exact p-value with ties
+\end{verbatim}
+
+\begin{verbatim}
+## [1] "AIAN__Other_2_"
+\end{verbatim}
+
+\begin{verbatim}
+## Warning in cor.test.default(res_diss[[xvar]], res_diss[[yvar]], method =
+## "spearman"): Cannot compute exact p-value with ties
+\end{verbatim}
+
+\begin{verbatim}
+## [1] "AIAN__Hispanic"
+\end{verbatim}
+
+\begin{verbatim}
+## Warning in cor.test.default(res_diss[[xvar]], res_diss[[yvar]], method =
+## "spearman"): Cannot compute exact p-value with ties
+\end{verbatim}
+
+\begin{verbatim}
+## [1] "API__Other_2_"
+\end{verbatim}
+
+\begin{verbatim}
+## Warning in cor.test.default(res_diss[[xvar]], res_diss[[yvar]], method =
+## "spearman"): Cannot compute exact p-value with ties
+\end{verbatim}
+
+\begin{verbatim}
+## [1] "API__Hispanic"
+\end{verbatim}
+
+\begin{verbatim}
+## Warning in cor.test.default(res_diss[[xvar]], res_diss[[yvar]], method =
+## "spearman"): Cannot compute exact p-value with ties
+\end{verbatim}
+
+\begin{verbatim}
+## [1] "Other_2___Hispanic"
+\end{verbatim}
+
+\begin{verbatim}
+## Warning in cor.test.default(res_diss[[xvar]], res_diss[[yvar]], method =
+## "spearman"): Cannot compute exact p-value with ties
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{write.table}\NormalTok{(sig\_test, }\StringTok{"clipboard"}\NormalTok{, }\AttributeTok{sep=}\StringTok{\textquotesingle{}}\SpecialCharTok{\textbackslash{}t}\StringTok{\textquotesingle{}}\NormalTok{, }\AttributeTok{row.names=}\ConstantTok{FALSE}\NormalTok{)}
+
+\NormalTok{sig\_test\_pearson}\OtherTok{\textless{}{-}}\FunctionTok{lapply}\NormalTok{(yvar,}
+       \ControlFlowTok{function}\NormalTok{(yvar, xvar, res\_diss)}
+\NormalTok{       \{}
+         \FunctionTok{cor.test}\NormalTok{(res\_diss[[xvar]], res\_diss[[yvar]], }\AttributeTok{method=}\StringTok{\textquotesingle{}pearson\textquotesingle{}}\NormalTok{) }\SpecialCharTok{\%\textgreater{}\%}
+           \FunctionTok{tidy}\NormalTok{()}
+\NormalTok{       \},}
+\NormalTok{       xvar,}
+\NormalTok{       res\_diss) }\SpecialCharTok{\%\textgreater{}\%}
+  \FunctionTok{bind\_rows}\NormalTok{()}\SpecialCharTok{\%\textgreater{}\%}\FunctionTok{mutate}\NormalTok{(}\StringTok{\textquotesingle{}dissimiliarity\_index\textquotesingle{}}\OtherTok{=}\NormalTok{dissim\_names)}
+
+\NormalTok{sig\_test\_pearson}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## # A tibble: 15 x 9
+##    estimate statistic  p.value parameter conf.low conf.high method   alternative
+##       <dbl>     <dbl>    <dbl>     <int>    <dbl>     <dbl> <chr>    <chr>      
+##  1   0.258      13.7  2.18e-41      2638  0.222      0.293  Pearson~ two.sided  
+##  2   0.0360      1.85 6.45e- 2      2638 -0.00217    0.0740 Pearson~ two.sided  
+##  3   0.175       9.14 1.20e-19      2638  0.138      0.212  Pearson~ two.sided  
+##  4   0.273      14.6  1.94e-46      2638  0.238      0.308  Pearson~ two.sided  
+##  5   0.316      17.1  2.95e-62      2638  0.281      0.350  Pearson~ two.sided  
+##  6  -0.110      -5.69 1.38e- 8      2638 -0.148     -0.0723 Pearson~ two.sided  
+##  7  -0.138      -7.16 1.02e-12      2638 -0.175     -0.100  Pearson~ two.sided  
+##  8  -0.164      -8.55 1.97e-17      2638 -0.201     -0.127  Pearson~ two.sided  
+##  9  -0.0825     -4.25 2.20e- 5      2638 -0.120     -0.0445 Pearson~ two.sided  
+## 10   0.0356      1.83 6.74e- 2      2638 -0.00256    0.0736 Pearson~ two.sided  
+## 11   0.0275      1.41 1.57e- 1      2638 -0.0106     0.0656 Pearson~ two.sided  
+## 12   0.0739      3.81 1.44e- 4      2638  0.0359     0.112  Pearson~ two.sided  
+## 13  -0.0241     -1.24 2.15e- 1      2638 -0.0622     0.0140 Pearson~ two.sided  
+## 14   0.0738      3.80 1.48e- 4      2638  0.0357     0.112  Pearson~ two.sided  
+## 15   0.112       5.79 7.65e- 9      2638  0.0743     0.150  Pearson~ two.sided  
+## # ... with 1 more variable: dissimiliarity_index <chr>
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{write.table}\NormalTok{(sig\_test\_pearson, }\StringTok{"clipboard"}\NormalTok{, }\AttributeTok{sep=}\StringTok{\textquotesingle{}}\SpecialCharTok{\textbackslash{}t}\StringTok{\textquotesingle{}}\NormalTok{, }\AttributeTok{row.names=}\ConstantTok{FALSE}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+What is the correlation in Seattle only between the dissimiliarity
+indices and the percent single family zoning
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# db.connect \textless{}{-} function() \{}
+\CommentTok{\#   elmer\_connection \textless{}{-} dbConnect(odbc(),}
+\CommentTok{\#                                 driver = "SQL Server",}
+\CommentTok{\#                                 server = "AWS{-}PROD{-}SQL\textbackslash{}\textbackslash{}Sockeye",}
+\CommentTok{\#                                 database = "Elmer",}
+\CommentTok{\#                                 trusted\_connection = "yes"}
+\CommentTok{\#   )}
+\CommentTok{\# \}}
+\CommentTok{\# }
+\CommentTok{\# \# a function to read tables and queries from Elmer}
+\CommentTok{\# read.dt \textless{}{-} function(astring, type =c(\textquotesingle{}table\_name\textquotesingle{}, \textquotesingle{}sqlquery\textquotesingle{})) \{}
+\CommentTok{\#   elmer\_connection \textless{}{-} db.connect()}
+\CommentTok{\#   if (type == \textquotesingle{}table\_name\textquotesingle{}) \{}
+\CommentTok{\#     dtelm \textless{}{-} dbReadTable(elmer\_connection, SQL(astring))}
+\CommentTok{\#   \} else \{}
+\CommentTok{\#     dtelm \textless{}{-} dbGetQuery(elmer\_connection, SQL(astring))}
+\CommentTok{\#   \}}
+\CommentTok{\#   dbDisconnect(elmer\_connection)}
+\CommentTok{\#   dtelm}
+\CommentTok{\# \}}
+\CommentTok{\# }
+\CommentTok{\# block\_group\_city\textless{}{-}read.dt("select pd.block\_group\_geoid10 from small\_areas.parcel\_dim pd where pd.city\_name\_2020 = \textquotesingle{}Seattle\textquotesingle{} group by pd.block\_group\_geoid10 order by pd.block\_group\_geoid10", \textquotesingle{}sqlquery\textquotesingle{})}
+\CommentTok{\# }
+\CommentTok{\# block\_group\_city \textless{}{-} block\_group\_city \%\textgreater{}\% mutate(block\_group\_geoid10 =as.character(block\_group\_geoid10))}
+\CommentTok{\# res\_diss\textless{}{-}res\_diss \%\textgreater{}\% mutate(geoid10=as.character(geoid10))}
+\CommentTok{\# res\_dissim\_seattle\textless{}{-} dplyr::left\_join(block\_group\_city ,res\_diss, by = c("block\_group\_geoid10"="geoid10"))}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# sig\_test\textless{}{-}lapply(yvar,}
+\CommentTok{\#        function(yvar, xvar, res\_diss)}
+\CommentTok{\#        \{}
+\CommentTok{\#          print(yvar)}
+\CommentTok{\#          cor.test(res\_dissim\_seattle[[xvar]], res\_dissim\_seattle[[yvar]], method=\textquotesingle{}spearman\textquotesingle{}) \%\textgreater{}\%}
+\CommentTok{\#            tidy()}
+\CommentTok{\#        \},}
+\CommentTok{\#        xvar,}
+\CommentTok{\#        res\_dissim\_seattle) \%\textgreater{}\%}
+\CommentTok{\#   bind\_rows() \%\textgreater{}\%mutate(\textquotesingle{}dissimiliarity\_index\textquotesingle{}=dissim\_names)}
+\CommentTok{\# }
+\CommentTok{\# write.table(sig\_test, "clipboard", sep=\textquotesingle{}\textbackslash{}t\textquotesingle{}, row.names=FALSE)}
+\CommentTok{\# }
+\CommentTok{\# sig\_test\_pearson\textless{}{-}lapply(yvar,}
+\CommentTok{\#        function(yvar, xvar, res\_diss)}
+\CommentTok{\#        \{}
+\CommentTok{\#          cor.test(res\_dissim\_seattle[[xvar]], res\_diss\_seattle[[yvar]], method=\textquotesingle{}pearson\textquotesingle{}) \%\textgreater{}\%}
+\CommentTok{\#            tidy()}
+\CommentTok{\#        \},}
+\CommentTok{\#        xvar,}
+\CommentTok{\#        res\_diss\_seattle) \%\textgreater{}\%}
+\CommentTok{\#   bind\_rows()\%\textgreater{}\%mutate(\textquotesingle{}dissimiliarity\_index\textquotesingle{}=dissim\_names)}
+\CommentTok{\# }
+\CommentTok{\# sig\_test\_pearson}
+\CommentTok{\# write.table(sig\_test\_pearson, "clipboard", sep=\textquotesingle{}\textbackslash{}t\textquotesingle{}, row.names=FALSE)}
+\end{Highlighting}
+\end{Shaded}
+
+This is a summary of the the range of the percent single family
+variable. There are many block groups with 100\% single family zoning,
+and many with 0\% single family zoning. Higher shares of single family
+zoning are more common, such as greater than 75\%, than lower shares
+such as 25\%
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{ggplot}\NormalTok{(res\_diss, }\FunctionTok{aes}\NormalTok{(}\AttributeTok{x=}\NormalTok{prct\_sf)) }\SpecialCharTok{+}\FunctionTok{geom\_histogram}\NormalTok{()}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+\end{verbatim}
+
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-4-1.pdf}
+
+In this summary, I am plotting histograms for the values taken on by
+each dissimilarity index. The distributions of each dissimilarity index
+can tell a story. I think we need to work together to figure out what it
+means.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\ControlFlowTok{for}\NormalTok{(name }\ControlFlowTok{in}\NormalTok{ dissim\_names)\{}
+\FunctionTok{print}\NormalTok{(}\FunctionTok{ggplot}\NormalTok{(res\_diss, }\FunctionTok{aes\_string}\NormalTok{(}\AttributeTok{x=}\NormalTok{name)) }\SpecialCharTok{+} \FunctionTok{geom\_histogram}\NormalTok{())}
+\NormalTok{\}}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+\end{verbatim}
+
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-5-1.pdf}
+
+\begin{verbatim}
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+\end{verbatim}
+
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-5-2.pdf}
+
+\begin{verbatim}
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+\end{verbatim}
+
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-5-3.pdf}
+
+\begin{verbatim}
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+\end{verbatim}
+
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-5-4.pdf}
+
+\begin{verbatim}
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+\end{verbatim}
+
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-5-5.pdf}
+
+\begin{verbatim}
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+\end{verbatim}
+
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-5-6.pdf}
+
+\begin{verbatim}
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+\end{verbatim}
+
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-5-7.pdf}
+
+\begin{verbatim}
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+\end{verbatim}
+
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-5-8.pdf}
+
+\begin{verbatim}
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+\end{verbatim}
+
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-5-9.pdf}
+
+\begin{verbatim}
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+\end{verbatim}
+
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-5-10.pdf}
+
+\begin{verbatim}
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+\end{verbatim}
+
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-5-11.pdf}
+
+\begin{verbatim}
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+\end{verbatim}
+
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-5-12.pdf}
+
+\begin{verbatim}
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+\end{verbatim}
+
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-5-13.pdf}
+
+\begin{verbatim}
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+\end{verbatim}
+
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-5-14.pdf}
+
+\begin{verbatim}
+## `stat_bin()` using `bins = 30`. Pick better value with `binwidth`.
+\end{verbatim}
+
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-5-15.pdf}
+
+Now I am plotting the relationship between the prct\_sf and the
+dissimilarity indices. It looks pretty noisy as the correlation
+coefficients imply.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\ControlFlowTok{for}\NormalTok{(name }\ControlFlowTok{in}\NormalTok{ dissim\_names)\{}
+\FunctionTok{print}\NormalTok{(}\FunctionTok{ggplot}\NormalTok{(res\_diss, }\FunctionTok{aes\_string}\NormalTok{(}\AttributeTok{x=}\StringTok{\textquotesingle{}prct\_sf\textquotesingle{}}\NormalTok{, }\AttributeTok{y=}\NormalTok{name))}\SpecialCharTok{+}
+  \FunctionTok{geom\_point}\NormalTok{()}\SpecialCharTok{+}
+  \FunctionTok{geom\_smooth}\NormalTok{(}\AttributeTok{method=}\NormalTok{lm, }\AttributeTok{formula=}\StringTok{\textquotesingle{}y \textasciitilde{}poly(x,3)\textquotesingle{}}\NormalTok{))}
+\NormalTok{\}}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-6-1.pdf}
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-6-2.pdf}
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-6-3.pdf}
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-6-4.pdf}
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-6-5.pdf}
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-6-6.pdf}
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-6-7.pdf}
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-6-8.pdf}
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-6-9.pdf}
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-6-10.pdf}
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-6-11.pdf}
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-6-12.pdf}
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-6-13.pdf}
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-6-14.pdf}
+\includegraphics{dissim_zoning_analysis_9_21_files/figure-latex/unnamed-chunk-6-15.pdf}
+
+\end{document}
