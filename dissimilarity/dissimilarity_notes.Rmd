@@ -1,7 +1,7 @@
 ---
 title: "Analyzing the Dissimilarity Indices for the PSRC region"
 author: "Data Science"
-date: "June 2021"
+date: "2021"
 output:
   html_document:
     df_print: paged
@@ -14,9 +14,10 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Does Single Family Zoning correlate with greater segregation?
 
-The dissimilarity index was calculated at a block group level. The Future Land Use Layer was used to represent zoning with the field Max Dwelling Units per Acre.
+The dissimilarity index was calculated at a block group level. The Future Land Use Layer was used to represent zoning with the field Max Dwelling Units per Acre. We are using this field to define single family zoning. The analysis found there is some correlation between single-family zoning and segregation. There is also a relationship between Max Dwelling Units and segregation over the entire range of Max DU. Lower Max Dwelling Units are associated with more white people, and Higher Max Dwelling Units are associated with more People of Color. The differing ranges of Max DUs per acre across the region makes it difficult to perform the analysis.
+I couldn't easily find a way to communicate the info I uncovered to a policy board level audience.
 
-So from a technical standpoint, we are looking into:
+From a technical standpoint, we are looking into:
 
 ### Does the Maximum Dwelling Units per Acre in a Block Group correlate with the Dissimilarity Index of the Block Group?
 
@@ -40,6 +41,10 @@ library(tidycensus)
 library(writexl)
 library(htmlwidgets)
 library(Hmisc)
+library(BAMMtools)
+library(DBI)
+library(odbc)
+library(mapview)
 
 setwd("~/GitHub/data-science/dissimilarity")
 
@@ -56,42 +61,430 @@ flu_df<-flu_df%>%drop_na(GEOID10)
 
 Because the future land use layer and the block groups do not match up geographically, I needed to do an aggregation to get a one to one match between the future land use and the block groups. For this, I found the max, min, and mean maximum du for a block group for all intersecting flu areas.
 
-```{r summarize_vars, echo=FALSE}
+Then I looked into which aggregation max, min or mean of the max_du had the most correlation with the dissimilarity index; this will help us select which aggregation is the best for further analysis.
+
+```{r stat_test, echo=FALSE}
 flu_df<-flu_df%>%group_by(GEOID10)%>% arrange(desc(max_du_ac))%>%summarise(max_max_du=first(max_du_ac), min_max_du=last(max_du_ac), mean_max_du=mean(max_du_ac))
+
 # remove 0s, these represent geographic mismatches
 flu_df <- flu_df %>% filter(max_max_du!=0)
 flu_dissim<-merge(flu_df, dissim_index, by ="GEOID10")
 
 
-describe(flu_dissim$max_max_du)
-describe(flu_dissim$min_max_du)
+cor.test(flu_dissim$White_Minority_Dissim, flu_dissim$max_max_du,
+         method = "spearman")
+
+cor.test(flu_dissim$White_Black_Dissim, flu_dissim$max_max_du,
+         method = "spearman")
+
+cor.test(flu_dissim$White_AIAN_Dissim, flu_dissim$max_max_du,
+         method = "spearman")
+
+
+cor.test(flu_dissim$White_Minority_Dissim, flu_dissim$mean_max_du,
+         method = "spearman")
+
+cor.test(flu_dissim$White_Black_Dissim, flu_dissim$mean_max_du,
+         method = "spearman")
+
+cor.test(flu_dissim$White_AIAN_Dissim, flu_dissim$mean_max_du,
+         method = "spearman")
+
+cor.test(flu_dissim$White_Minority_Dissim, flu_dissim$min_max_du,
+         method = "spearman")
+
+cor.test(flu_dissim$White_Black_Dissim, flu_dissim$min_max_du,
+         method = "spearman")
+
+cor.test(flu_dissim$White_AIAN_Dissim, flu_dissim$min_max_du,
+         method = "spearman")
+
+
+```
+
+**The most correlation was observed between the dissimilarity index and the aggregation to the block group by mean**, so the rest of the analysis will use the mean max_du_ac by block group from the flu layer.
+
+Let's analyze the distributions of the mean_max_du and the dissimilarity indices.
+
+```{r summary_vars, echo=FALSE}
+
 describe(flu_dissim$mean_max_du)
 
 describe(flu_dissim$White_Black_Dissim)
 describe(flu_dissim$White_Minority_Dissim)
 
-ggplot(flu_dissim, aes(x=max_max_du)) + geom_histogram(bins=100)
-ggplot(flu_dissim, aes(x=min_max_du)) + geom_histogram(bins=100)
-ggplot(flu_dissim, aes(x=mean_max_du)) + geom_histogram(bins=100)
+ggplot(flu_df,aes(x=mean_max_du))+geom_histogram(bins=100)+geom_vline(aes(xintercept=mean(mean_max_du, color=blue)))
+
+breaks<-getJenksBreaks(flu_df$mean_max_du, k=10)
+breaks
+
 ggplot(flu_dissim, aes(x=White_Black_Dissim)) + geom_histogram(bins=100)
 ggplot(flu_dissim, aes(x=White_Minority_Dissim)) + geom_histogram(bins=100)
+
+```
+
+There are long tails on the max dus. I'm going to cap them at 100. Then create some maps to look at both the max dus and the dissimilarity indices.
+
+```{r more_analysis}
+
+flu_dissim<- flu_dissim %>%mutate(mean_max_du_capped=replace(mean_max_du,mean_max_du>100,100))
+
+ggplot(flu_dissim, aes(x=mean_max_du_capped)) + geom_histogram(bins=25)
+
 
 
 ```
 
-There are long tails on the max dus. I'm going to cap them at 100. I think I'll use max_max_du at this point too.
+```{r, echo=FALSE}
+create_map_du <- function(c.layer,
+                             map.title = NULL, map.subtitle = NULL,
+                             map.title.position = NULL,
+                             legend.title = NULL, legend.subtitle = NULL,
+                             map.lat=47.615, map.lon=-122.257, map.zoom=8.5, wgs84=4326){
+  
 
-```{r more_analysis}
 
-flu_dissim<- flu_dissim %>%mutate(max_max_du_capped=replace(max_max_du,max_max_du>100,100))
+  # Calculate Bins from Data and create color palette
+  rng <- range(c.layer$mean_max_du_capped)
+  max_bin <- max(abs(rng))
+  round_to <- 10^floor(log10(max_bin))
+  max_bin <- ceiling(max_bin/round_to)*round_to
+  breaks <- (sqrt(max_bin)*c(0.1, 0.2,0.4, 0.6, 0.8, 1))^2
+  bins <- c(0, breaks)
 
-ggplot(flu_dissim, aes(x=max_max_du_capped)) + geom_histogram(bins=100)
+  pal <- leaflet::colorBin("RdYlBu", domain = c.layer$mean_max_du_capped, bins = bins, reverse = TRUE)
+  
+  labels <- paste0(
+                   'Max Du per Acre: ',c.layer$mean_max_du_capped) %>% lapply(htmltools::HTML)
+  
+  m <- leaflet::leaflet() %>%
+    leaflet::addMapPane(name = "polygons", zIndex = 410) %>%
+    leaflet::addMapPane(name = "maplabels", zIndex = 500) %>% # higher zIndex rendered on top
+    
+    leaflet::addProviderTiles("CartoDB.VoyagerNoLabels") %>%
+    leaflet::addProviderTiles("CartoDB.VoyagerOnlyLabels",
+                              options = leaflet::leafletOptions(pane = "maplabels"),
+                              group = "Labels") %>%
+    
+    leaflet::addEasyButton(leaflet::easyButton(icon="fa-globe",
+                                               title="Region",
+                                               onClick=leaflet::JS("function(btn, map){map.setView([47.615,-122.257],8.5); }"))) %>%
+    leaflet::addPolygons(data=c.layer,
+                         fillOpacity = 0.7,
+                         fillColor = pal(c.layer$mean_max_du_capped),
+                         opacity = 0.7,
+                         weight = 0.7,
+                         color = "#BCBEC0",
+                         group="Population",
+                         options = leaflet::leafletOptions(pane = "polygons"),
+                         dashArray = "",
+                         highlight = leaflet::highlightOptions(
+                           weight =5,
+                           color = "76787A",
+                           dashArray ="",
+                           fillOpacity = 0.7,
+                           bringToFront = TRUE),
+                         label = labels,
+                         labelOptions = leaflet::labelOptions(
+                           style = list("font-weight" = "normal", padding = "3px 8px"),
+                           textsize = "15px",
+                           direction = "auto")) %>%
+    
+    leaflet::addLegend(pal = pal,
+                       values = c.layer$mean_max_du_capped,
+                       position = "bottomright",
+                       title = paste(legend.title, '<br>', legend.subtitle)) %>%
+    
+    leaflet::addControl(html = paste(map.title, '<br>', map.subtitle),
+                        position = map.title.position,
+                        layerId = 'mapTitle') %>%
+    
+    leaflet::addLayersControl(baseGroups = "CartoDB.VoyagerNoLabels",
+                              overlayGroups = c("Labels", "Population")) %>%
+    
+    leaflet::setView(lng=map.lon, lat=map.lat, zoom=map.zoom)
+  
+  return(m)
+  
+}
+```
+Now let's map the range of Max DU per acre.Red shows where there is more restriction on max du per acre, Blue shows where there is less restriction.
 
-ggplot(flu_dissim, aes(x=max_max_du_capped, y=White_Black_Dissim))+
+MAX DU PER ACRE
+```{r make_maps, echo=FALSE}
+flu_dissim<-flu_dissim%>%mutate(GEOID10=as.character(GEOID10))
+flu_dissim<-flu_dissim%>%drop_na(GEOID10)
+
+gdb.nm <- paste0("MSSQL:server=",
+                 "AWS-PROD-SQL\\Sockeye",
+                 ";database=",
+                 "ElmerGeo",
+                 ";trusted_connection=yes")
+
+spn <-  2285
+
+bg_layer_name <- "dbo.BLOCKGRP2010_NOWATER"
+
+bg.lyr <- st_read(gdb.nm, bg_layer_name, crs = spn)
+
+wgs84=4326
+c.layer <- dplyr::left_join(bg.lyr,flu_dissim, by = c("geoid10"="GEOID10")) %>%
+  sf::st_transform(wgs84)
+c.layer$mean_max_du_capped[is.na(c.layer$mean_max_du_capped)]<-0
+
+
+flu_bg_map<-create_map_du(c.layer)
+
+flu_bg_map
+```
+
+```{r, echo=FALSE}
+create_map_du_10 <- function(c.layer,
+                             map.title = NULL, map.subtitle = NULL,
+                             map.title.position = NULL,
+                             legend.title = NULL, legend.subtitle = NULL,
+                             map.lat=47.615, map.lon=-122.257, map.zoom=8.5, wgs84=4326){
+  
+
+
+  # Calculate Bins from Data and create color palette
+  bins <- c(0, 10,100)
+
+  
+  pal <- leaflet::colorBin("RdYlBu", domain = c.layer$mean_max_du_capped, bins = bins, reverse=TRUE)
+  
+  labels <- paste0(
+                   'Max Du per Acre: ', c.layer$mean_max_du_capped) %>% lapply(htmltools::HTML)
+  
+  m <- leaflet::leaflet() %>%
+    leaflet::addMapPane(name = "polygons", zIndex = 410) %>%
+    leaflet::addMapPane(name = "maplabels", zIndex = 500) %>% # higher zIndex rendered on top
+    
+    leaflet::addProviderTiles("CartoDB.VoyagerNoLabels") %>%
+    leaflet::addProviderTiles("CartoDB.VoyagerOnlyLabels",
+                              options = leaflet::leafletOptions(pane = "maplabels"),
+                              group = "Labels") %>%
+    
+    leaflet::addEasyButton(leaflet::easyButton(icon="fa-globe",
+                                               title="Region",
+                                               onClick=leaflet::JS("function(btn, map){map.setView([47.615,-122.257],8.5); }"))) %>%
+    leaflet::addPolygons(data=c.layer,
+                         fillOpacity = 0.7,
+                         fillColor = pal(c.layer$mean_max_du_capped),
+                         opacity = 0.7,
+                         weight = 0.7,
+                         color = "#BCBEC0",
+                         group="Population",
+                         options = leaflet::leafletOptions(pane = "polygons"),
+                         dashArray = "",
+                         highlight = leaflet::highlightOptions(
+                           weight =5,
+                           color = "76787A",
+                           dashArray ="",
+                           fillOpacity = 0.7,
+                           bringToFront = TRUE),
+                         label = labels,
+                         labelOptions = leaflet::labelOptions(
+                           style = list("font-weight" = "normal", padding = "3px 8px"),
+                           textsize = "15px",
+                           direction = "auto")) %>%
+    
+    leaflet::addLegend(pal = pal,
+                       values = c.layer$mean_max_du_capped,
+                       position = "bottomright",
+                       title = paste(legend.title, '<br>', legend.subtitle)) %>%
+    
+    leaflet::addControl(html = paste(map.title, '<br>', map.subtitle),
+                        position = map.title.position,
+                        layerId = 'mapTitle') %>%
+    
+    leaflet::addLayersControl(baseGroups = "CartoDB.VoyagerNoLabels",
+                              overlayGroups = c("Labels", "Population")) %>%
+    
+    leaflet::setView(lng=map.lon, lat=map.lat, zoom=map.zoom)
+  
+  return(m)
+  
+}
+```
+
+A MAP OF MAX DU Greater or Less than 10. 
+```{r du_10}
+
+map_du_10<-create_map_du_10(c.layer)
+map_du_10
+
+```
+A MAP OF MAX DU Greater or Less than 25.
+```{r, echo=FALSE}
+create_map_du_25 <- function(c.layer,
+                             map.title = NULL, map.subtitle = NULL,
+                             map.title.position = NULL,
+                             legend.title = NULL, legend.subtitle = NULL,
+                             map.lat=47.615, map.lon=-122.257, map.zoom=8.5, wgs84=4326){
+  
+
+
+  # Calculate Bins from Data and create color palette
+  bins <- c(0, 25,100)
+
+  pal <- leaflet::colorBin("RdYlBu", domain = c.layer$mean_max_du_capped, bins = bins, reverse=TRUE)
+  
+  labels <- paste0(
+                   'Max Du per Acre: ', prettyNum(round(c.layer$mean_max_du_capped, -1), big.mark = ",")) %>% lapply(htmltools::HTML)
+  
+  m <- leaflet::leaflet() %>%
+    leaflet::addMapPane(name = "polygons", zIndex = 410) %>%
+    leaflet::addMapPane(name = "maplabels", zIndex = 500) %>% # higher zIndex rendered on top
+    
+    leaflet::addProviderTiles("CartoDB.VoyagerNoLabels") %>%
+    leaflet::addProviderTiles("CartoDB.VoyagerOnlyLabels",
+                              options = leaflet::leafletOptions(pane = "maplabels"),
+                              group = "Labels") %>%
+    
+    leaflet::addEasyButton(leaflet::easyButton(icon="fa-globe",
+                                               title="Region",
+                                               onClick=leaflet::JS("function(btn, map){map.setView([47.615,-122.257],8.5); }"))) %>%
+    leaflet::addPolygons(data=c.layer,
+                         fillOpacity = 0.7,
+                         fillColor = pal(c.layer$mean_max_du_capped),
+                         opacity = 0.7,
+                         weight = 0.7,
+                         color = "#BCBEC0",
+                         group="Population",
+                         options = leaflet::leafletOptions(pane = "polygons"),
+                         dashArray = "",
+                         highlight = leaflet::highlightOptions(
+                           weight =5,
+                           color = "76787A",
+                           dashArray ="",
+                           fillOpacity = 0.7,
+                           bringToFront = TRUE),
+                         label = labels,
+                         labelOptions = leaflet::labelOptions(
+                           style = list("font-weight" = "normal", padding = "3px 8px"),
+                           textsize = "15px",
+                           direction = "auto")) %>%
+    
+    leaflet::addLegend(pal = pal,
+                       values = c.layer$mean_max_du_capped,
+                       position = "bottomright",
+                       title = paste(legend.title, '<br>', legend.subtitle)) %>%
+    
+    leaflet::addControl(html = paste(map.title, '<br>', map.subtitle),
+                        position = map.title.position,
+                        layerId = 'mapTitle') %>%
+    
+    leaflet::addLayersControl(baseGroups = "CartoDB.VoyagerNoLabels",
+                              overlayGroups = c("Labels", "Population")) %>%
+    
+    leaflet::setView(lng=map.lon, lat=map.lat, zoom=map.zoom)
+  
+  return(m)
+  
+}
+```
+
+Map of 25 DU per acre or not.
+
+```{r, echo=FALSE}
+map_du_25<-create_map_du_25(c.layer)
+map_du_25
+```
+
+
+WHITE-BLACK DISSIMILIARITY MAP
+```{r, echo=FALSE}
+create_map_dissim <- function(c.layer,
+                             map.title = NULL, map.subtitle = NULL,
+                             map.title.position = NULL,
+                             legend.title = NULL, legend.subtitle = NULL,
+                             map.lat=47.615, map.lon=-122.257, map.zoom=8.5, wgs84=4326){
+  
+
+
+  # Calculate Bins from Data and create color palette
+  rng <- range(c.layer$White_Black_Dissim)
+
+  bins<-getJenksBreaks(c.layer$White_Black_Dissim, k=10)
+
+  
+  pal <- leaflet::colorBin("RdYlBu", domain = c.layer$White_Black_Dissim, bins = bins)
+  
+  labels <- paste0(
+                   'White_Black_Dissim: ',c.layer$White_Black_Dissim, big.mark = ",") %>% lapply(htmltools::HTML)
+  
+  m <- leaflet::leaflet() %>%
+    leaflet::addMapPane(name = "polygons", zIndex = 410) %>%
+    leaflet::addMapPane(name = "maplabels", zIndex = 500) %>% # higher zIndex rendered on top
+    
+    leaflet::addProviderTiles("CartoDB.VoyagerNoLabels") %>%
+    leaflet::addProviderTiles("CartoDB.VoyagerOnlyLabels",
+                              options = leaflet::leafletOptions(pane = "maplabels"),
+                              group = "Labels") %>%
+    
+    leaflet::addEasyButton(leaflet::easyButton(icon="fa-globe",
+                                               title="Region",
+                                               onClick=leaflet::JS("function(btn, map){map.setView([47.615,-122.257],8.5); }"))) %>%
+    leaflet::addPolygons(data=c.layer,
+                         fillOpacity = 0.7,
+                         fillColor = pal(c.layer$White_Black_Dissim),
+                         opacity = 0.7,
+                         weight = 0.7,
+                         color = "#BCBEC0",
+                         group="Population",
+                         options = leaflet::leafletOptions(pane = "polygons"),
+                         dashArray = "",
+                         highlight = leaflet::highlightOptions(
+                           weight =5,
+                           color = "76787A",
+                           dashArray ="",
+                           fillOpacity = 0.7,
+                           bringToFront = TRUE),
+                         label = labels,
+                         labelOptions = leaflet::labelOptions(
+                           style = list("font-weight" = "normal", padding = "3px 8px"),
+                           textsize = "15px",
+                           direction = "auto")) %>%
+    
+    leaflet::addLegend(pal = pal,
+                       values = c.layer$White_Black_Dissim,
+                       position = "bottomright",
+                       title = paste(legend.title, '<br>', legend.subtitle)) %>%
+    
+    leaflet::addControl(html = paste(map.title, '<br>', map.subtitle),
+                        position = map.title.position,
+                        layerId = 'mapTitle') %>%
+    
+    leaflet::addLayersControl(baseGroups = "CartoDB.VoyagerNoLabels",
+                              overlayGroups = c("Labels", "Population")) %>%
+    
+    leaflet::setView(lng=map.lon, lat=map.lat, zoom=map.zoom)
+  
+  return(m)
+  
+}
+
+```
+Looking at the allowed max du map and the Dissimiliarity map, the patterns between the two are not obvious.
+
+
+```{r White_Black_Dissim}
+c.layer$White_Black_Dissim[is.na(c.layer$White_Black_Dissim)]<-1000
+dissim_bg_map<-create_map_dissim(c.layer)
+dissim_bg_map
+
+
+```
+
+These plots show the dissimiliarity index vs the max du.  Again they show a fairly weak relationship, but it is there.
+```{r}
+
+ggplot(flu_dissim, aes(x=mean_max_du_capped, y=White_Black_Dissim))+
   geom_point()+
   geom_smooth(method=lm, formula='y ~poly(x,3)')
 
-ggplot(flu_dissim, aes(x=max_max_du_capped, y=White_Minority_Dissim))+
+ggplot(flu_dissim, aes(x=mean_max_du_capped, y=White_Minority_Dissim))+
   geom_point()+
   geom_smooth(method=lm, formula='y ~poly(x,3)')
 
@@ -103,24 +496,20 @@ With max DUs ranging from 0 to 25, as the max DUs increases, the White-Black Dis
 
 Also with max Dus ranging from 75 to 100 as the max DUs increases, the White-Black Dissimilarity decreases, and becomes more negative, meaning less White shares, but more segregation of People of Color (I think this is what it means).
 
-```{r stat tests}
+If we want to define single family, we will need to use some thresholds to do so.  Here is an analysis of defining single family at 10 du per acre.  The average dissimiliarity index is more negative in non-single family zoned areas at -0.82 avg and more positive in single family zoned areas at 2.66 avg.
 
-cor.test(flu_dissim$White_Minority_Dissim, flu_dissim$max_max_du,
-         method = "spearman")
+The differences are statistically significant between the groups.
 
-cor.test(flu_dissim$White_Black_Dissim, flu_dissim$max_max_du,
-         method = "spearman")
 
-cor.test(flu_dissim$White_AIAN_Dissim, flu_dissim$max_max_du,
-         method = "spearman")
+```{r}
 
 ```
 
-On the total range of DUs per acre the correlation is weak.
 
-```{r thresholds}
 
-sf_threshold_low<-6
+```{r, echo=FALSE}
+
+sf_threshold_low<-10
 
 
 
@@ -146,17 +535,11 @@ flu_dissim %>%
   summarise(mean_white_aian_dissim_low=mean(White_AIAN_Dissim))
 
 
-cor.test(flu_dissim$White_Minority_Dissim, flu_dissim$is_sf_low,
-         method = "spearman")
 
-cor.test(flu_dissim$White_Black_Dissim, flu_dissim$is_sf_low,
-         method = "spearman")
-cor.test(flu_dissim$White_AIAN_Dissim, flu_dissim$is_sf_low,
-         method = "spearman")
 
 
 anova_sf_white_black = aov(White_Black_Dissim ~is_sf_low, data=flu_dissim)
-anova_sf_white_minority = aov(White_Black_Dissim ~is_sf_low, data=flu_dissim)
+anova_sf_white_minority = aov(White_Minority_Dissim ~is_sf_low, data=flu_dissim)
 anova_sf_white_aian = aov(White_AIAN_Dissim ~is_sf_low, data=flu_dissim)
 summary(anova_sf_white_aian)
 summary(anova_sf_white_minority)
@@ -164,41 +547,12 @@ summary(anova_sf_white_black)
 
 ```
 
-This is not producing much correlation. What if we try a multibreak point approach: 0-3 DUs low sf, 3-6 med sf, 6-10 high sf, 10-25 low mf, 25-75 med mf, 75+ high mf.
-
-```{r multibreak approach}
-
-low_sf<-3
-med_sf<-6
-high_sf<-10
-low_mf<-25
-med_mf<-75
+What if we try a multibreak point approach: 0-3 DUs low sf, 3-6 med sf, 6-10 high sf, 10-25 low mf, 25-75 med mf, 75+ high mf?
 
 
-# Add a variable for defining single family as greater than 0, but less than some max DU per acre
-flu_dissim<-flu_dissim %>% mutate(sf_mf_cats = case_when(
-    max_max_du<=low_sf ~ "Low_SF",
-    max_max_du<=med_sf ~ "Med_SF",
-    max_max_du<=high_sf ~ "High_SF",
-    max_max_du<=low_mf ~ "Low_MF",
-    max_max_du<=med_mf ~ "Med_MF",
-    max_max_du>=med_mf ~ "High_MF"
-  ))
 
-flu_dissim$sf_mf_cats <-factor(flu_dissim$sf_mf_cats, levels=c("Low_SF", "Med_SF",
-                                                               "High_SF", "Low_MF",
-                                                               "Med_MF", "High_MF"))
 
-flu_dissim %>% group_by(sf_mf_cats) %>% summarise(mean_dissim_white_black=mean(White_Black_Dissim))
-
-du_cat_dissim<-ggplot(flu_dissim, aes(x=sf_mf_cats, y=White_Black_Dissim))+geom_boxplot()
-
-du_cat_dissim
-```
-
-It looks like a few categories can be collapsed. Med_SF/High_SF,
-
-```{r multibreak2}
+```{r, echo=FALSE}
   
 low_sf<-3
 med_high_sf<-10
@@ -226,41 +580,101 @@ flu_dissim %>% group_by(sf_mf_cats) %>% summarise(mean_dissim_white_black=mean(W
 du_cat_dissim<-ggplot(flu_dissim, aes(x=sf_mf_cats, y=White_Black_Dissim))+geom_boxplot()
 
 
-du_cat_dissim_aian<-ggplot(flu_dissim, aes(x=sf_mf_cats, y=White_AIAN_Dissim))+geom_boxplot()
-```
-
-```{r estimate_model_with_more_Vars}
-acs_rent_inc = read.csv("C:/Users/SChildress/Documents/GitHub/data-science/dissimilarity/census_tract_vars.csv")
-
-
-# housing_policy<-read.xlsx("C:/Users/SChildress/Documents/GitHub/data-science/HHSurvey/estimation_displace/housing_policy_city.xlsx")
-# 
-# housing_policy[is.na(housing_policy)]<-0
-# housing_policy[housing_policy=='x']<-1
-
-options(scipen=999)
-#flu_dissim$GEOID10 <- as.character(flu_dissim$GEOID10)
-#acs_rent_inc$GEOID <- as.character(acs_rent_inc$GEOID)
-flu_dissim <- merge(flu_dissim,acs_rent_inc, by.x='GEOID10', by.y='GEOID', all.x=TRUE)
-
-
 
 ```
 
-```{r}
+What if we simply estimate a linear model with the categorization of single family and multi-family?
+```{r, echo=FALSE}
 flu_dissim_model<-glm(White_Black_Dissim ~ sf_mf_cats,
                  data=flu_dissim)
 
+summary(flu_dissim_model)
+```
+
+
+
+Now do some analysis in Seattle only between the relationship of max_du and dissimiliarity.We'll do the correlation with max_du, the model with multiple categories.
+
+```{r , echo=FALSE}
+# connecting to Elmer
+db.connect <- function() {
+  elmer_connection <- dbConnect(odbc(),
+                                driver = "SQL Server",
+                                server = "AWS-PROD-SQL\\Sockeye",
+                                database = "Elmer",
+                                trusted_connection = "yes"
+  )
+}
+
+# a function to read tables and queries from Elmer
+read.dt <- function(astring, type =c('table_name', 'sqlquery')) {
+  elmer_connection <- db.connect()
+  if (type == 'table_name') {
+    dtelm <- dbReadTable(elmer_connection, SQL(astring))
+  } else {
+    dtelm <- dbGetQuery(elmer_connection, SQL(astring))
+  }
+  dbDisconnect(elmer_connection)
+  dtelm
+}
+
+block_group_city<-read.dt("select pd.block_group_geoid10 from small_areas.parcel_dim pd where pd.city_name_2020 = 'Seattle' group by pd.block_group_geoid10 order by pd.block_group_geoid10", 'sqlquery')
+
+
 
 ```
 
-<https://datascience.stackexchange.com/questions/893/how-to-get-correlation-between-two-categorical-variable-and-a-categorical-variab>
+SEATTLE ONLY ANALYSIS
 
-Looking to the correlation between the categories and the dissimiliarity index with a statistical test.
+```{r seattle, echo=FALSE}
+block_group_city <- block_group_city %>% mutate(block_group_geoid10 =as.character(block_group_geoid10))
+flu_dissim_seattle<- dplyr::left_join(block_group_city,flu_dissim, by = c("block_group_geoid10"="GEOID10"))
 
-```{r anova}
 
-anova = aov(White_Black_Dissim ~sf_mf_cats, data=flu_dissim)
-summary(anova)
-mean_low
+flu_dissim_seattle %>% group_by(sf_mf_cats) %>% summarise(mean_dissim_white_black=mean(White_Black_Dissim))
+ggplot(flu_dissim_seattle, aes(x=sf_mf_cats, y=White_Black_Dissim))+geom_boxplot()         
+flu_dissim_model_seattle<-glm(White_Black_Dissim ~ sf_mf_cats,
+                 data=flu_dissim)
+summary(flu_dissim_seattle)
+ggplot(flu_dissim_seattle, aes(x=mean_max_du_capped, y=White_Black_Dissim))+
+  geom_point()+
+  geom_smooth(method=lm, formula='y ~poly(x,3)')
+cor.test(flu_dissim_seattle$White_Black_Dissim, flu_dissim_seattle$mean_max_du,
+         method = "spearman")
+
+flu_dissim_seattle %>%
+  group_by(is_sf_low)%>%
+  summarise(mean_white_black_dissim_low=mean(White_Black_Dissim))
+
+
+anova_sf_white_black = aov(White_Black_Dissim ~is_sf_low, data=flu_dissim_seattle)
+anova_sf_white_minority = aov(White_Minority_Dissim ~is_sf_low, data=flu_dissim_seattle)
+anova_sf_white_aian = aov(White_AIAN_Dissim ~is_sf_low, data=flu_dissim_seattle)
+summary(anova_sf_white_aian)
+summary(anova_sf_white_minority)
+summary(anova_sf_white_black)
 ```
+
+
+```{r seattle, echo=FALSE}
+sf_threshold_high<-25
+
+
+
+# Add a variable for defining single family as greater than 0, but less than some max DU per acre
+flu_dissim_seattle<-flu_dissim_seattle %>% mutate(
+  is_sf_high = case_when(
+    max_max_du>=sf_threshold_high ~ 0,
+    max_max_du<sf_threshold_high~ 1
+  ))%>%
+  mutate(is_sf_high= as.numeric(is_sf_high))
+
+
+
+
+flu_dissim_seattle%>%
+  group_by(is_sf_high)%>%
+  summarise(mean_white_black_dissim_high=mean(White_Black_Dissim))
+```
+
+
