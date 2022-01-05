@@ -16,19 +16,22 @@ pums_recode_na <-function(dt){
   return(dt)
 }
 
-pums_stat <- function(df, stat_type, target_var, group_var){
+pums_stat <- function(df, stat_type, target_var=NULL, group_var=NULL){
   result_name <- sym(stat_type)                                                                    # i.e. total, tally, median or mean
   srvyrf_name <- as.name(paste0("survey_",stat_type))                                              # specific srvyr function name
   se_name     <- paste0(stat_type,"_se")                                                           # specific srvyr standard error field
   moe_name    <- paste0(stat_type,"_moe")                                                          # margin of error
   if(!is.null(group_var)){df %<>% group_by(!!as.name(group_var))}
-  if(stat_type=="tally"){
-    rs <- summarise(df, tally:=survey_tally(!!as.name(target_var), vartype="se"))
+  if(stat_type=="count"){
+    rs <- survey_tally(df, name="count", vartype="se")
   }else{
     rs <- summarise(df, !!result_name:=(as.function(!!srvyrf_name)(!!as.name(target_var), na.rm=TRUE, vartype="se", level=0.95)))
   }
-  rs %<>% mutate(!!rlang::sym(moe_name):=!!rlang::sym(se_name) * 1.645) %>% select(-se_name)
-  rs %<>% arrange(!!as.name(group_var))
+  rs %<>% mutate(!!rlang::sym(moe_name):=!!rlang::sym(se_name) * 1.645) %>% select(-se_name) 
+  if(!is.null(group_var)){
+    rs %<>% arrange(!!as.name(group_var))
+    df %<>% ungroup()
+  }
   return(rs)
 }
 
@@ -45,7 +48,7 @@ p1 <- get_pums(variables=c("RAC1P","HISP"),
                puma = c(11501:11520,11601:11630,11701:11720,11801:11810),                          # Faster when filtered--futureproofed for additional PUMAs
                year=dyear, survey="acs1",
                recode=TRUE) %>% setDT() %>%                                                        # Recode option only available after 2017
-  .[, HISP:=fcase((HISP)=="01", "Yes", default="No")] %>%                                          # Recode Hispanic to binary
+  .[, HISP:=fcase((HISP)=="01", "No", default="Yes")] %>%                                          # Recode Hispanic to binary
   .[, HISP_label:=fcase(HISP=="Yes", "Hispanic or Latino", default="Not Hispanic or Latino")] %>%
   .[, RAC1P_label:=as.character(RAC1P_label)]
 
@@ -59,7 +62,7 @@ hhs <- p1[, .(RAC1P=stuff(RAC1P),
           by=.(SERIALNO)]                                                                          # Summarize households by race/ethnic composition
 hhs[(RAC1P %like% ","|HISP %like% ","), c("RAC1P_label","HISP_label"):="Multiple races"]           # Households either heterogeously Hispanic or racially heterogenous labeled "Multiple races" (why?)                                        
 
-h1 <- get_pums(variables=c("TYPE","WGTP","HINCP","ADJINC"),                            
+h1 <- get_pums(variables=c("WGTP","HINCP","ADJINC"),                            
                state="WA",
                puma = c(11501:11520,11601:11630,11701:11720,11801:11810),           
                year=dyear, survey="acs1",
@@ -70,6 +73,9 @@ h1 <- get_pums(variables=c("TYPE","WGTP","HINCP","ADJINC"),
   .[hhs,`:=`(RACE_label=i.RAC1P_label, HISPANIC_label=i.HISP_label, 
              HHSIZE=i.HHSIZE), on =.(SERIALNO)]                                                    # Carry hh race/ethnicity attributes to hh dataset
 
+fcols <- c("RACE_label","HISPANIC_label")
+h1[ , (fcols):=lapply(.SD, factor), .SDcols=fcols]                                                 # Switch to factors in prep for Srvyr
+  
 rw <- colnames(h1) %>% .[grep(paste0("WGTP","\\d+"),.)]                                            # Define replicate weights
 
 h1 %<>% pums_recode_na() %>% setDF() %>%
@@ -83,7 +89,7 @@ h1 %<>% pums_recode_na() %>% setDF() %>%
                        rscale=length(all_of(rw)))
 
 # Run statistical functions ---------------------
-r_med_hhinc <- pums_stat(h1, "median", "HINCP","RACE_label")
-h_med_hhinc <- pums_stat(h1, "median", "HINCP","HISPANIC_label")
-r_counts <- pums_stat(h1, "tally", "SERIALNO", "RACE_label")
-h_counts <- pums_stat(h1, "tally", "SERIALNO", "HISPANIC_label")
+r_med_hhinc1 <- pums_stat(h1, "median", "HINCP","RACE_label")
+h_med_hhinc1 <- pums_stat(h1, "median", "HINCP","HISPANIC_label")
+r_counts1 <- pums_stat(h1, "count", NA, "RACE_label")
+h_counts1 <- pums_stat(h1, "count", NA, "HISPANIC_label")
