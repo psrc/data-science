@@ -17,6 +17,8 @@ library(lubridate)
 library(MASS)
 library(ggpubr)
 library(gmapsdistance)
+library(broom)
+library(clipr)
 
 # Functions ----------------------------------------------------------------
 
@@ -79,7 +81,7 @@ trips = read.dt(sql.query, 'sqlquery')
 sql.query <- paste("SELECT * FROM HHSurvey.v_days_2017_2019_public")
 days = read.dt(sql.query, 'sqlquery')
 
-sql.query <- paste("SELECT * FROM HHSurvey.v_persons_2017_2019_in_house")
+sql.query <- paste("SELECT * FROM HHSurvey.v_persons_2017_2019_in_house WHERE worker <> 'No jobs'")
 person = read.dt(sql.query, 'sqlquery')
 
 sql.query <- paste("SELECT * FROM HHSurvey.v_households_2017_2019_in_house")
@@ -154,8 +156,12 @@ model2 = lm(upd_telework_time~hhincome_detailed+age+ gender+education+license+ra
 summary(model2)
 
 # Ordered Logit Model ----------------------------------------------------------------
-ord_logit_model1 = polr(telework_cat ~ hhincome_detailed+age+ gender+education_upd+license+race_category , data = telework_day_person_hh, Hess = TRUE)
-summary(ord_logit_model1)
+ord_logit_model1 = polr(telework_cat ~ hhincome_broad+age+ gender+education_upd+race_category , data = telework_day_person_hh, Hess = TRUE)
+
+ord_logit_model1%>%
+  tidy()%>%
+  write_clip()
+
 
 # Data Prep for another model ----------------------------------------------------------------
 telework_day_person_hh= telework_day_person_hh %>% 

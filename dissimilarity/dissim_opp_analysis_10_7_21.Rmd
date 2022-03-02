@@ -1,0 +1,75 @@
+---
+title: "Comparing the opportunity index  group to the dissimilarity index"
+author: "suzanne"
+date: "10/11/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Dissimilarity indices vs opportunity index
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+setwd("~/GitHub/data-science/dissimilarity")
+
+library(broom)
+library(dplyr)
+library(corrr)
+library(ggplot2)
+library(tidyverse)
+library(Hmisc)
+library(DBI)
+library(odbc)
+library(foreign)
+res_diss<-read.dbf('dsTrct20.dbf')
+```
+```{r, warning=FALSE}
+xvar<-'OPP_Class'
+dissim_names<-c("White__Bla","White_AIAN" ,"White__API",
+"White__Oth" ,"White__His", "White__Min", "Black__AIA", "Black__API","Black__Oth", "Black__His" ,"AIAN__Asia" ,"AIAN__Othe", "AIAN__Hisp","API__Other" ,"API__Hispa" ,"Other2__Hi")
+
+avg_dis_opp_class<- res_diss %>% group_by(OPP_Class)%>% summarise_at(dissim_names, mean,na.rm=TRUE)
+
+write.table(avg_dis_opp_class, "clipboard", sep='\t', row.names=TRUE)
+
+yvar <- names(res_diss)[names(res_diss) %in% dissim_names]
+
+for(yvar1 in yvar){
+
+
+  avz <- aov(res_diss[,yvar1] ~ OPP_Class, data = res_diss) # Each ANOVA test iterating through each column of my dataframe
+
+  result <- summary(avz) # summarize each ANOVA in a table
+
+  print(yvar1)
+  print(result)
+}
+```
+
+
+```{r, warning=FALSE}
+xvars<-c('EDU_Z', 'ECON_Z', 'HOUSE_Z', 'TRANS_Z', 'HEALTH_Z', 'OPP_Z')
+
+dissim_names<-yvar
+
+for(xvar in xvars){
+  print(xvar)
+  sig_test<-lapply(yvar,
+         function(yvar, xvar, res_diss)
+         {
+           
+           cor.test(res_diss[[xvar]], res_diss[[yvar]], method='spearman') %>%
+             tidy()
+         },
+         xvar,
+         res_diss) %>%
+    bind_rows() %>%mutate('dissimiliarity_index'=dissim_names)
+  print(sig_test)
+  write.table(sig_test, "clipboard", sep='\t', row.names=FALSE)
+}
+```
+```

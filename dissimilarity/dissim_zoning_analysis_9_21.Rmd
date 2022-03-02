@@ -1,0 +1,226 @@
+---
+title: "Comparing the percent of single family zoning in a block group to the dissimilarity index"
+author: "suzanne"
+date: "9/21/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Dissimilarity indices vs share of single family zoning
+
+In this analysis, we are comparing the dissimilarity indices at the block group level to zoning. Because the zoning and the block groups don't match up, we found the residentail share of the block group defined as single family (\>8.7 DU per acre)
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+setwd("~/GitHub/data-science/dissimilarity")
+
+library(broom)
+library(dplyr)
+library(corrr)
+library(ggplot2)
+library(tidyverse)
+library(Hmisc)
+library(DBI)
+library(odbc)
+library(foreign)
+res_diss<-read.dbf('diss_res.dbf')
+```
+
+## Spearman correlation between dissimilarity indices and % sf.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+xvar <- "prct_sf"
+dissim_names<-c('White__Bla', 'White_AIAN', 'White__API',	 'White__His',	'White__Min',	'Black__AIA',	'Black__API',	'Black__Oth','Black__His',	'AIAN__Asia',	'AIAN__Othe','AIAN__Hisp',	'API__Other' ,	'API__Hispa',	'Other_2___'
+)
+yvar <- names(res_diss)[names(res_diss) %in% dissim_names]
+
+sig_test<-lapply(yvar,
+       function(yvar, xvar, res_diss)
+       {
+        
+         cor.test(res_diss[[xvar]], res_diss[[yvar]], method='spearman') %>%
+           tidy()
+       },
+       xvar,
+       res_diss) %>%
+  bind_rows() %>%mutate('dissimiliarity_index'=dissim_names)
+sig_test
+write.table(sig_test, "clipboard", sep='\t', row.names=FALSE)
+
+```
+
+## Pearson correlation between dissimilarity indexes and % single family zoning.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# sig_test_pearson<-lapply(yvar,
+#        function(yvar, xvar, res_diss)
+#        {
+#          cor.test(res_diss[[xvar]], res_diss[[yvar]], method='pearson') %>%
+#            tidy()
+#        },
+#        xvar,
+#        res_diss) %>%
+# ```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+bind_rows()%>%mutate('dissimiliarity_index'=dissim_names)%>%select(-c(statistic, conf.low, conf.high))
+
+sig_test_pearson
+write.table(sig_test_pearson, "clipboard", sep='\t', row.names=FALSE)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+db.connect <- function() {
+  elmer_connection <- dbConnect(odbc(),
+                                driver = "SQL Server",
+                                server = "AWS-PROD-SQL\\Sockeye",
+                                database = "Elmer",
+                                trusted_connection = "yes"
+  )
+}
+
+# a function to read tables and queries from Elmer
+read.dt <- function(astring, type =c('table_name', 'sqlquery')) {
+  elmer_connection <- db.connect()
+  if (type == 'table_name') {
+    dtelm <- dbReadTable(elmer_connection, SQL(astring))
+  } else {
+    dtelm <- dbGetQuery(elmer_connection, SQL(astring))
+  }
+  dbDisconnect(elmer_connection)
+  dtelm
+}
+
+block_group_city<-read.dt("select pd.block_group_geoid10 from small_areas.parcel_dim pd where pd.city_name_2020 = 'Seattle' group by pd.block_group_geoid10 order by pd.block_group_geoid10", 'sqlquery')
+
+block_group_city <- block_group_city %>% mutate(block_group_geoid10 =as.character(block_group_geoid10))
+res_diss<-res_diss %>% mutate(geoid10=as.character(geoid10))
+res_dissim_seattle<- dplyr::left_join(block_group_city ,res_diss, by = c("block_group_geoid10"="geoid10"))
+
+```
+## Spearman correlation between % single family zoning and dissimilarity for Seattle only
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+sig_test<-lapply(yvar,
+       function(yvar, xvar, res_diss)
+       {
+   
+         cor.test(res_dissim_seattle[[xvar]], res_dissim_seattle[[yvar]], method='spearman') %>%
+           tidy()
+       },
+       xvar,
+       res_dissim_seattle) %>%
+  bind_rows() %>%mutate('dissimiliarity_index'=dissim_names)
+
+sig_test
+write.table(sig_test, "clipboard", sep='\t', row.names=FALSE)
+
+
+```
+## Pearson correlation between % single family zoning and dissimilarity for Seattle only
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+sig_test_pearson<-lapply(yvar,
+       function(yvar, xvar, res_diss)
+       {
+         cor.test(res_dissim_seattle[[xvar]], res_dissim_seattle[[yvar]], method='pearson') %>%
+           tidy()
+       },
+       xvar,
+       res_diss_seattle) %>%
+  bind_rows()%>%mutate('dissimiliarity_index'=dissim_names)%>%select(-c(statistic, conf.low, conf.high))
+sig_test_pearson
+write.table(sig_test_pearson, "clipboard", sep='\t', row.names=FALSE)
+```
+
+This is a summary of the the range of the percent single family variable. There are many block groups with 100% single family zoning, and many with 0% single family zoning. Higher shares of single family zoning are more common, such as greater than 75%, than lower shares such as 25%
+
+Histogram of the % single family zoning
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(res_diss, aes(x=prct_sf)) +geom_histogram()
+```
+
+In this summary, I am plotting histograms for the values taken on by each dissimilarity index. The distributions of each dissimilarity index can tell a story. I think we need to work together to figure out what it means.
+
+## Histograms for each dissimilarity index
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+for(name in dissim_names){
+print(ggplot(res_diss, aes_string(x=name)) + geom_histogram())
+}
+
+```
+
+## Scatterplots between % single family zoning and the dissimilarity index
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+for(name in dissim_names){
+print(ggplot(res_diss, aes_string(x='prct_sf', y=name))+
+  geom_point()+
+  geom_smooth(method=lm, formula='y ~poly(x,3)'))
+}
+```
+```{r}
+res_diss_seattle<-res_diss_seattle %>% mutate(
+  sf_or_not= case_when(
+    prct_sf<1~ 'Less than 100% single family zoning',
+    prct_sf==1 ~ '100% single family zoning'
+  ))
+res_diss_seattle<-res_diss_seattle %>% mutate(
+  sf_or_not= case_when(
+    prct_sf<1~ 'Less than 100% single family zoning',
+    prct_sf==1 ~ '100% single family zoning'
+  ))
+
+res_diss_grouped<-res_diss_seattle %>%group_by(sf_or_not)%>%summarize_at(dissim_names, mean, na.rm=TRUE)
+write.table(res_diss_grouped, 'clipboard', sep='\t', row.names=FALSE )
+```
+
+
+```{r}
+res_diss<-res_diss %>% mutate(
+  sf_or_not= case_when(
+    prct_sf<1~ 'Less than 100% single family zoning',
+    prct_sf==1 ~ '100% single family zoning'
+  ))
+```
+```{r}
+res_diss_grouped<-res_diss %>%group_by(sf_or_not)%>%summarize_at(dissim_names, mean, na.rm=TRUE)
+write.table(res_diss_grouped, 'clipboard', sep='\t', row.names=FALSE )
+```
+
+
+```{r}
+
+```{r}
+res_diss_grouped<-res_diss %>%group_by(sf_or_not)%>%summarize_at(dissim_names, mean, na.rm=TRUE)
+write.table(res_diss_grouped, 'clipboard', sep='\t', row.names=FALSE )
+
+```
+
+
+```
+```{r}
+
+res_diss_seattle<-res_diss_seattle %>% mutate(
+  sf_or_not= case_when(
+    prct_sf<1~ 'Less than 100% single family zoning',
+    prct_sf==1 ~ '100% single family zoning'
+  ))
+res_diss_seattle<-res_diss_seattle %>% mutate(
+  sf_or_not= case_when(
+    prct_sf<1~ 'Less than 100% single family zoning',
+    prct_sf==1 ~ '100% single family zoning'
+  ))
+```{r}
+
+```
+
+res_diss_grouped<-res_diss_seattle %>%group_by(sf_or_not)%>%summarize_at(dissim_names, mean, na.rm=TRUE)
+write.table(res_diss_grouped, 'clipboard', sep='\t', row.names=FALSE )
+```
