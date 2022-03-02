@@ -8,13 +8,22 @@ library(stringdist)
 library(leaflet)
 library(stringr)
 
-
-
 # Loading the data --------------------------------------------------------
 
-schools <- read.csv("J:/Projects/Surveys/HHTravel/Survey2019/Data/schools/schools.csv")
-person_est <-  read.csv("J:/Projects/Surveys/HHTravel/Survey2019/Data/schools/persons_for_estimation_20210413.csv")
-parcels <- read.csv("J:/Projects/Surveys/HHTravel/Survey2019/Data/schools/parcels_for_hh_survey.csv")
+#schools <- read.csv("J:/Projects/Surveys/HHTravel/Survey2019/Data/schools/schools.csv")
+#person_est <-  read.csv("J:/Projects/Surveys/HHTravel/Survey2019/Data/schools/persons_for_estimation_20210413.csv")
+#parcels <- read.csv("J:/Projects/Surveys/HHTravel/Survey2019/Data/schools/parcels_for_hh_survey.csv")
+
+schools <- read.csv("schools.csv")
+person_est <-  read.csv("persons_for_estimation_20210413.csv")
+parcels <- read.csv("parcels_for_hh_survey.csv")
+
+# output files
+#new_school_file <- "J:/Projects/Surveys/HHTravel/Survey2019/Data/schools/Updated tables/upd_schools.csv"
+new_school_file <- "new_schools.csv"
+
+matched_students_file <- "J:/Projects/Surveys/HHTravel/Survey2019/Data/schools/Updated tables/matched_students_schools.csv"
+matched_students_file <- "matched_students_schools.csv"
 
 # School matching ----------------------------------------------------------------
 
@@ -46,7 +55,8 @@ new_schools <- data.frame(school_id=max(schools$school_id)+1:13,
                                   -121.80101460197697))
 
 
-write.csv(new_schools, "J:/Projects/Surveys/HHTravel/Survey2019/Data/schools/Updated tables/upd_schools.csv")
+if(!is.null(new_school_file))
+    write.csv(new_schools, new_school_file, row.names = FALSE)
 
 new_schools_geo <- st_as_sf(new_schools, coords = c("lon", "lat"), crs=4326)
 new_schools_geo$school_latlong = as.character(new_schools_geo$geometry)
@@ -95,7 +105,7 @@ for (i in 1:nrow(person_students_geo)) {
 
 
 person_students_geo$school_id = school_ids
-person_students_geo$distance = distance
+person_students_geo$distance = unlist(distance)
 
 #matching schools that are above the threshold and have a valid school name entered by school name
 
@@ -129,10 +139,43 @@ for (i in 1:nrow(person_students_geo)) {
 # 1. That are above 500 m from assigned school AND
 # school name IS NOT equal to University of Washington (due to the greater university area) 
 
+schools_upd <- bind_rows(schools, new_schools)
 
 students_and_schools = person_students_geo %>% 
   mutate(school_id = as.integer(school_id)) %>% 
   left_join(select(schools_upd, school_id, sname), by = "school_id") 
+
+#create a map of the invalid matches
+# In the map below we also filter out students  that are over 25 years old
+students_and_schools_limited3 = students_and_schools %>% 
+    filter(distance >500 & sname != "University Of Washington") %>% filter(age < 25)
+
+# mapping the schools that didnt match
+
+m <- leaflet(students_and_schools_limited3)%>%
+    addTiles() %>%
+    addCircleMarkers(
+        radius = 6,
+        color = "green",
+        stroke = FALSE, 
+        opacity = 1,
+        fillOpacity = 0.7,
+        popup = paste("School Name: ", students_and_schools_limited3$school_name_from_survey, ", age: ",students_and_schools_limited3$age, 
+                      ", assigned: ",students_and_schools_limited3$sname,sep="")) #%>% 
+
+print(m)
+
+not_matched_students <- students_and_schools_limited3
+not_matched_students$school_latlong = as.character(not_matched_students$geometry)
+st_geometry(not_matched_students) <- NULL
+write.csv(not_matched_students, "not_matched_students.csv", row.names = FALSE)
+
+
+schools_geo$school_latlong = as.character(schools_geo$geometry)
+schools_upd = schools_geo
+st_geometry(schools_upd) = NULL
+
+
 
 # we insert -99 for invalid matches - there are 94 invalid matches (about 9% of all students)
 count = 0  
@@ -147,47 +190,21 @@ for (i in 1:nrow(students_and_schools)) {
 }
 
 students_and_schools$distance = as.numeric(students_and_schools$distance)
+st_geometry(students_and_schools) <- NULL
 
-write.csv(students_and_schools, "J:/Projects/Surveys/HHTravel/Survey2019/Data/schools/Updated tables/matched_students_schools.csv")
-
-#create a map of the invalid matches
-# In the map below we also filter out students  that are over 25 years old
-
-students_and_schools_limited3 = students_and_schools %>% 
-  filter(distance >500 & sname != "University Of Washington") #%>% 
-  filter(age < 25)
+if(!is.null(matched_students_file))
+    write.csv(students_and_schools, matched_students_file, row.names = FALSE)
 
 
-schools_geo$school_latlong = as.character(schools_geo$geometry)
-schools_upd = schools_geo
-st_geometry(schools_upd) = NULL
+# TODO: try to match not matched schools from students_and_schools_limited3
 
-
-
-write.csv(not_matched_students, "not_matched_students.csv")
-
-
-# mapping the schools that didnt match
-
-m <- leaflet(students_and_schools_limited3)%>%
-  addTiles() %>%
-  addCircleMarkers(
-    radius = 6,
-   color = "green",
-    stroke = FALSE, 
-    opacity = 1,
-   fillOpacity = 0.7,
-    popup = paste("School Name: ", students_and_schools_limited3$school_name_from_survey, ", age: ",students_and_schools_limited3$age, 
-                  ", assigned: ",students_and_schools_limited3$sname,sep="")) #%>% 
-
-print(m)
 
 # testing - checking if the name matches - if not, search name in the school table. If the name didn't match, then school is not present in the school table.
 
 test = head(schools_geo, 100)
 
-agrep(students_and_schools_limited2$school_name_from_survey[1], schools_geo$sname,ignore.case = TRUE, value = TRUE,)
-agrep(word(students_and_schools_limited2$school_name_from_survey[1]), schools_geo$sname,ignore.case = TRUE, value = TRUE)
+agrep(students_and_schools_limited3$school_name_from_survey[1], schools_geo$sname,ignore.case = TRUE, value = TRUE,)
+agrep(word(students_and_schools_limited3$school_name_from_survey[1]), schools_geo$sname,ignore.case = TRUE, value = TRUE)
 adist('mercer', 'mercer island high school')
 
 a = c("mercer",'mercer island high sch', 'mercer island high school', "sherwood academy")
