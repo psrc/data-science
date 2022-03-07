@@ -1,0 +1,121 @@
+---
+title: "BKR_sample_size_estimate_2021"
+author: "suzanne"
+date: "3/4/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## BKR needs
+
+The cities of Bellevue, Kirkland, and Redmond would like to be able to estimate mode share reasonably for their jurisdictions, using broad modes like SOV, HOV, Transit, Walking+Biking. They would like to be able estimate biking separately if possible, but that seems probably infeasible.
+
+First, we will look at 2019 trips by mode in the region (non-Seattle oversample), and in B, K, and R.
+
+```{r read_in)2918}
+source('travel_survey_analysis_functions.R')
+
+
+#where you are running your R code
+wrkdir <- "C:/Users/SChildress/Documents/GitHub/travel_studies/2019/analysis"
+
+#where you want to output tables
+file_loc <- 'C:/Users/SChildress/Documents/HHSurvey/'
+# Get all households that were not part of the City of SEattle oversample
+sql.hh.query <- paste("SELECT household_id, home_city_name, cityofseattle, hh_weight_2019_v2021 FROM HHSurvey.v_households where survey_year=2019")
+hhs<- read.dt(sql.hh.query, 'sqlquery')
+
+hhs_psrc<-hhs%>% filter(cityofseattle=='No')
+
+# get all 2019 trips not paid for by City of Seattle
+sql.trip.query <- paste("SELECT household_id, mode_simple, trip_weight_2019_v2021, travelers_total, cityofseattle FROM HHSurvey.v_trips where survey_year=2019")
+trips <- read.dt(sql.trip.query, 'sqlquery')
+
+trips_psrc<-trips%>% filter(cityofseattle=='No')
+
+
+
+```
+
+```{r }
+trips_psrc<-trips_psrc%>% mutate(mode_w_sov=case_when(
+  (mode_simple=='Drive' &  travelers_total==1) ~ 'SOV',
+  (mode_simple=='Drive' & travelers_total!=1) ~ 'HOV',
+  TRUE ~ mode_simple))
+```
+
+```{r}
+trips_by_mode_psrc<-
+  simple_tab_categorical(trips_psrc,'mode_w_sov', 'trip_weight_2019_v2021')
+trips_by_mode_psrc
+
+write.table(trips_by_mode_psrc, "clipboard", sep="\t", row.names=FALSE)
+  
+```
+```{r}
+trips_hhid<-left_join(trips_psrc, hhs_psrc, by= 'household_id')
+```
+
+
+
+```{r}
+trips_bkr<- trips_hhid %>% filter(home_city_name=='Bellevue' | home_city_name=='Kirkland' | home_city_name=='Redmond')
+```
+
+```{r}
+trips_by_mode_bkr<-
+  simple_tab_categorical(trips_bkr,'mode_w_sov', 'trip_weight_2019_v2021')
+trips_by_mode_bkr
+```
+
+
+```{r}
+write.table(trips_by_mode_bkr, "clipboard", sep="\t", row.names=FALSE)
+```
+```{r}
+hhs_psrc%>%summarise(n=n())
+hhs_psrc%>%filter(home_city_name=='Bellevue' | home_city_name=='Kirkland' | home_city_name=='Redmond')%>%group_by(home_city_name)%>%summarise(n=n())
+```
+
+
+
+```{r}
+trips_bellevue<- trips_hhid %>% filter(home_city_name=='Bellevue')
+```
+
+```{r}
+trips_bellevue_mode<-
+  simple_tab_categorical(trips_bellevue,'mode_w_sov', 'trip_weight_2019_v2021')
+trips_bellevue_mode
+write.table(trips_bellevue_mode, "clipboard", sep="\t", row.names=FALSE)
+```
+
+
+
+
+
+```{r}
+trips_kirkland<- trips_hhid %>% filter(home_city_name=='Kirkland')
+```
+
+```{r}
+trips_kirkland_mode<-
+  simple_tab_categorical(trips_kirkland,'mode_w_sov', 'trip_weight_2019_v2021')
+trips_kirkland_mode
+write.table(trips_kirkland_mode, "clipboard", sep="\t", row.names=FALSE)
+```
+
+
+```{r}
+trips_redmond<- trips_hhid %>% filter(home_city_name=='Redmond')
+```
+
+```{r}
+trips_redmond_mode<-
+  simple_tab_categorical(trips_bellevue,'mode_w_sov', 'trip_weight_2019_v2021')
+trips_redmond_mode
+write.table(trips_redmond_mode, "clipboard", sep="\t", row.names=FALSE)
+```

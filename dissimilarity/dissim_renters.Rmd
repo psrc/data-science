@@ -11,9 +11,8 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Dissimilarity indices vs share of single family zoning
+## Dissimilarity indices vs share of renters
 
-In this analysis, we are comparing the dissimilarity indices at the block group level to zoning. Because the zoning and the block groups don't match up, we found the residentail share of the block group defined as single family (\>8.7 DU per acre)
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
 setwd("~/GitHub/data-science/dissimilarity")
@@ -25,45 +24,81 @@ library(ggplot2)
 library(tidyverse)
 library(Hmisc)
 library(DBI)
+library(psrccensus)
 library(odbc)
 library(foreign)
 res_diss<-read.dbf('diss_res.dbf')
 ```
 
-## Spearman correlation between dissimilarity indices and % sf.
+## Spearman correlation between dissimilarity indices and % renters.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
-xvar <- "prct_sf"
+census_df<-read.csv('census_tract_vars.csv')
+census_df$GEOID<-as.character(census_df$GEOID)
 dissim_names<-c('White__Bla', 'White_AIAN', 'White__API',	 'White__His',	'White__Min',	'Black__AIA',	'Black__API',	'Black__Oth','Black__His',	'AIAN__Asia',	'AIAN__Othe','AIAN__Hisp',	'API__Other' ,	'API__Hispa',	'Other_2___'
 )
 yvar <- names(res_diss)[names(res_diss) %in% dissim_names]
+res_diss$GEOID<-str_sub(as.character(res_diss$geoid10),1,11)
+res_diss_census<-merge(res_diss, census_df, on='GEOID')
+xvar<-'rent'
 
-sig_test<-lapply(yvar,
-       function(yvar, xvar, res_diss)
-       {
-        
-         cor.test(res_diss[[xvar]], res_diss[[yvar]], method='spearman') %>%
+yrbuilt<-get_acs_recs(geography = 'tract',
+             table.names = c('B25038'),
+             years=c(2019),
+             acs.type = 'acs5')
+yrbuilt$GEOID<-as.character(yrbuilt$GEOID)
+
+res_diss_census2<-merge(res_diss_census, median_yrbuilt, on='GEOID')
+res_diss_census2<-res_diss_census2 %>% filter(estimate>0)
+
+# sig_test<-lapply(yvar,
+#        function(yvar, xvar, res_diss)
+#        {
+#          ggplot(res_diss_census, aes(x=xvar,y=yvar))+geom_point()
+#          cor.test(res_diss[[xvar]], res_diss[[yvar]], method='spearman') %>%
+#            tidy()
+#        },
+#        xvar,
+#        res_diss) %>%
+#   bind_rows() %>%mutate('dissimiliarity_index'=dissim_names)
+# sig_test
+# write.table(sig_test, "clipboard", sep='\t', row.names=FALSE)
+
+ggplot(res_diss_census, aes(x=rent,y=White__Bla))+geom_point()+geom_smooth(method='lm')
+       
+cor.test(res_diss_census$rent, res_diss_census$White__Bla, method='spearman') %>%
            tidy()
-       },
-       xvar,
-       res_diss) %>%
-  bind_rows() %>%mutate('dissimiliarity_index'=dissim_names)
-sig_test
-write.table(sig_test, "clipboard", sep='\t', row.names=FALSE)
+
+summary(lm(White__Bla~rent, data=res_diss_census))
+
+cor.test(census_df$rent, census_df$nonwhite, method='spearman')
+
+ggplot(census_df, aes(x=nonwhite,y=rent))+geom_point()+geom_smooth(method='lm')
+
+
+ggplot(res_diss_census2, aes(x=nonwhite,y=estimate))+geom_point()+geom_smooth(method='lm')
+
+ggplot(res_diss_census2, aes(x=cost_burdened,y=estimate))+geom_point()+geom_smooth(method='lm')
+summary(lm(White__Bla~rent+estimate, data=res_diss_census2))
 
 ```
 
 ## Pearson correlation between dissimilarity indexes and % single family zoning.
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE}
- sig_test_pearson<-lapply(yvar,
-        function(yvar, xvar, res_diss)
-        {
-          cor.test(res_diss[[xvar]], res_diss[[yvar]], method='pearson') %>%
-            tidy()
-        },
-        xvar,
-        res_diss) %>%bind_rows()%>%mutate('dissimiliarity_index'=dissim_names)%>%select(-c(statistic, conf.low, conf.high))
+# sig_test_pearson<-lapply(yvar,
+#        function(yvar, xvar, res_diss)
+#        {
+#          cor.test(res_diss[[xvar]], res_diss[[yvar]], method='pearson') %>%
+#            tidy()
+#        },
+#        xvar,
+#        res_diss) %>%
+# ```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+bind_rows()%>%mutate('dissimiliarity_index'=dissim_names)%>%select(-c(statistic, conf.low, conf.high))
 
 sig_test_pearson
 write.table(sig_test_pearson, "clipboard", sep='\t', row.names=FALSE)

@@ -25,6 +25,7 @@ library(Hmisc)
 library(DBI)
 library(odbc)
 library(foreign)
+library(readxl)
 res_diss<-read.dbf('dsTrct20.dbf')
 ```
 ```{r, warning=FALSE}
@@ -48,6 +49,10 @@ for(yvar1 in yvar){
   print(yvar1)
   print(result)
 }
+```
+```{r}
+opp_class_comp<-read_excel('opp_class_components.xlsx')
+
 ```
 
 

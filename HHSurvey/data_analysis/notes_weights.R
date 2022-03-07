@@ -45,18 +45,37 @@ read.dt <- function(astring, type =c('table_name', 'sqlquery')) {
 
 #Create a crosstab from one variable, calculate counts, totals, and shares,
 # for categorical data
-create_table_one_var = function(var1, table_temp,table_type ) {
+create_table_one_var = function(var1, table_temp,vartype ) {
   #table_temp = recategorize_var_upd(var2,table_temp)
   #print(table_temp)
-  if (table_type == "household" | table_type == "person" ) {
-    weight_2017 = "hh_wt_revised"
-    weight_2019 = "hh_wt_2019"
-    weight_comb = "hh_wt_combined"
-   } 
-     else if (table_type == "trip") {
-    weight_2017 = "trip_weight_revised"
-    weight_2019 = "trip_wt_2019"
-    weight_comb = "trip_wt_combined"  
+  switch(vartype)
+  if (vartype == "household") {
+    weight_2017_2019 = "hh_wt_combined"
+    weight_2021 = "abs_hh_weight"
+  }
+  # everyone including children:
+  else if (vartype == "allpersons"){
+    weight_2017_2019 = "hh_wt_combined"
+    weight_2021_abs = "abs_hh_weight"
+  }
+  else if (vartype == "adult"){
+    weight_2017_2019 = "hh_wt_combined"
+    weight_2021_abs = "abs_hh_weight"
+    weight_2021_op= "op_respondent_weight"
+    weight_2021_combined= "combined_adult_weight"
+  }
+  else if (table_type='respondent')
+  {
+    weight_2017_2019 = "hh_wt_combined"
+    weight_2021_abs = "abs_mainrespondent_weight"
+    weight_2021_op = "op_respondent_weight"
+    weight_2021_combined= "combined_respodent_weight"
+    
+  }
+  
+  (table_type == "trip") {
+    weight_comb = "trip_wt_combined",
+    weight_
   } 
   
   temp = table_temp %>% select(!!sym(var1), all_of(weight_2017), all_of(weight_2019), all_of(weight_comb)) %>% 
@@ -85,18 +104,6 @@ cross_tab_categorical <- function(table, var1, var2, wt_field) {
   
 } 
 
-simple_tab_categorical <- function(table, var1, wt_field) {
-  expanded <- table %>% 
-    group_by(.data[[var1]]) %>%
-    summarize(Count= n(),Total=sum(.data[[wt_field]])) %>%
-    mutate(Percentage=Total/sum(Total)*100)
-  
-
-  
-  return (expanded)
-  
-} 
-
 # Create margins of error for dataset
 categorical_moe <- function(sample_size_group){
   sample_w_MOE<-sample_size_group %>%
@@ -111,9 +118,9 @@ categorical_moe <- function(sample_size_group){
 
 
 #write out crosstabs
-write_cross_tab<-function(out_table, var1, var2, yr,  file_loc){
+write_cross_tab<-function(out_table, var1, var2, file_loc){
   
-  file_name <- paste(var1,'_', var2,'_', yr.xlsx)
+  file_name <- paste(var1,'_', var2,'.xlsx')
   file_ext<-file.path(file_loc, file_name)
   write.xlsx(out_table, file_ext, sheetName ="data", 
              col.names = TRUE, row.names = FALSE, append = FALSE)
