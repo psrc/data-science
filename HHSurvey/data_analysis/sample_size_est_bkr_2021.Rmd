@@ -115,7 +115,7 @@ trips_redmond<- trips_hhid %>% filter(home_city_name=='Redmond')
 
 ```{r}
 trips_redmond_mode<-
-  simple_tab_categorical(trips_bellevue,'mode_w_sov', 'trip_weight_2019_v2021')
+  simple_tab_categorical(trips_redmond,'mode_w_sov', 'trip_weight_2019_v2021')
 trips_redmond_mode
 write.table(trips_redmond_mode, "clipboard", sep="\t", row.names=FALSE)
 ```
