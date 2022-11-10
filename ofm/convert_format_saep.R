@@ -14,6 +14,7 @@ filename <- "saep_block20.csv"
 id.cols <- c("STATEFP", "COUNTYFP", "TRACTCE", "BLOCKCE", "GEOID20")
 counties <- c("33", "35", "53", "61")
 years <- c(as.character(2020:2022))
+version <- 'October 14, 2022' # taken from OFM block metadata
 
 # functions ---------------------------------------------------------------
 
@@ -24,7 +25,7 @@ filter.for.psrc <- function(table) {
   attributes <- c("POP", "HHP","GQ", "HU", "OHU")
   cols <- apply(expand.grid(attributes, years), 1, function(x) paste0(x[1], x[2])) # create all combinations of years & attributes
   allcols <- c(id.cols, cols)
-  dt <- dt[, ..allcols]
+  dt <- dt[, ..allcols][, VERSION := version]
 }
 
 convert.file <- function(filename, inputfileformat, outputfileformat){
