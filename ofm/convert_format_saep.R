@@ -1,20 +1,27 @@
 # This script will take original ofm saep format, subset for the Central Puget Sound Region if necessary, and convert to various formats used at PSRC
 #  revised by Christy Lam 2022-11-10
 
+# Download from here: https://ofm.wa.gov/washington-data-research/population-demographics/population-estimates/small-area-estimates-program
+# Extract to dir listed below
+
+# For QC (comparing April 1 to Block estimates), download from here and save to sub-dir "quality_check/published": https://ofm.wa.gov/washington-data-research/population-demographics/population-estimates/april-1-official-population-estimates
+
+
 library(foreign)
 library(data.table)
 library(openxlsx)
 library(stringr)
+library(tidyverse)
 
 base.dir <- "J:/OtherData/OFM/SAEP"
-dir <- "SAEP Extract_2022-10-21"
+dir <- "SAEP Extract_2023-10-13"
 data.dir <- file.path(dir, "original")
 filename <- "saep_block20.csv"
 
 id.cols <- c("STATEFP", "COUNTYFP", "TRACTCE", "BLOCKCE", "GEOID20")
 counties <- c("33", "35", "53", "61")
-years <- c(as.character(2020:2022))
-version <- 'October 14, 2022' # taken from OFM block metadata
+years <- c(as.character(2020:2023))
+version <- 'September 29, 2023' # taken from OFM block metadata
 
 # functions ---------------------------------------------------------------
 
@@ -29,6 +36,7 @@ filter.for.psrc <- function(table) {
 }
 
 convert.file <- function(filename, inputfileformat, outputfileformat){
+
   if (inputfileformat == "dbf")   df <- read.dbf(file.path(base.dir, data.dir, filename)) %>% as.data.table
   if (inputfileformat == "xlsx") df <- read.xlsx(file.path(base.dir, data.dir, filename)) %>% as.data.table
   if (inputfileformat == "csv")   df <- fread(file.path(base.dir, data.dir, filename)) %>% as.data.table
@@ -91,12 +99,12 @@ qc.rds <- function(years) {
 }
 
 
-# convert.file(filename, inputfileformat = "csv", outputfileformat = "rds")
+convert.file(filename, inputfileformat = "csv", outputfileformat = "rds")
 
 # QC ----------------------------------------------------------------------
 
 
-# years <- c(as.character(2020:2022))
+# years <- c(as.character(2020:2023))
 # dt <- qc.rds(years)
 # print(dt)
 # write.xlsx(dt, file.path(base.dir, dir, "quality_check", paste0("ofm_saep_qc_", Sys.Date(), "_2.xlsx")))
