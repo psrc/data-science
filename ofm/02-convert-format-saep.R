@@ -1,27 +1,23 @@
-# This script will take original ofm saep format, subset for the Central Puget Sound Region if necessary, and convert to various formats used at PSRC
-#  revised by Christy Lam 2022-11-10
-
-# Download from here: https://ofm.wa.gov/washington-data-research/population-demographics/population-estimates/small-area-estimates-program
-# Extract to dir listed below
+# After running 01-download-saep.R, this script will take original ofm saep format, subset for the Central Puget Sound Region if necessary, 
+# and convert to various formats used at PSRC
+#  revised by Christy Lam 2024-10-17
 
 # For QC (comparing April 1 to Block estimates), download from here and save to sub-dir "quality_check/published": https://ofm.wa.gov/washington-data-research/population-demographics/population-estimates/april-1-official-population-estimates
-
 
 library(foreign)
 library(data.table)
 library(openxlsx)
-library(stringr)
 library(tidyverse)
 
 base.dir <- "J:/OtherData/OFM/SAEP"
-dir <- "SAEP Extract_2023-10-13"
+dir <- "SAEP Extract_2024-10-16"
 data.dir <- file.path(dir, "original")
 filename <- "saep_block20.csv"
 
 id.cols <- c("STATEFP", "COUNTYFP", "TRACTCE", "BLOCKCE", "GEOID20")
 counties <- c("33", "35", "53", "61")
-years <- c(as.character(2020:2023))
-version <- 'September 29, 2023' # taken from OFM block metadata
+years <- c(as.character(2020:2024))
+version <- 'September 17, 2024' # taken from OFM block metadata
 
 # functions ---------------------------------------------------------------
 
@@ -37,11 +33,11 @@ filter.for.psrc <- function(table) {
 
 convert.file <- function(filename, inputfileformat, outputfileformat){
 
-  if (inputfileformat == "dbf")   df <- read.dbf(file.path(base.dir, data.dir, filename)) %>% as.data.table
-  if (inputfileformat == "xlsx") df <- read.xlsx(file.path(base.dir, data.dir, filename)) %>% as.data.table
-  if (inputfileformat == "csv")   df <- fread(file.path(base.dir, data.dir, filename)) %>% as.data.table
+  if (inputfileformat == "dbf")   df <- read.dbf(file.path(base.dir, data.dir, filename)) %>% as.data.table()
+  if (inputfileformat == "xlsx") df <- read.xlsx(file.path(base.dir, data.dir, filename)) %>% as.data.table()
+  if (inputfileformat == "csv")   df <- fread(file.path(base.dir, data.dir, filename)) %>% as.data.table()
   
-  # 2020-22 data format
+  # 2020-24 data format
   dt <- filter.for.psrc(df)
  
   if (outputfileformat == "dbf") write.dbf(dt, file.path(base.dir, dir, "ofm_saep.dbf"))
@@ -78,7 +74,7 @@ read.published.ofm.data <- function() {
 }
 
 qc.rds <- function(years) {
-  ofm <- readRDS(file.path(base.dir, dir, "ofm_saep.rds")) %>% as.data.table
+  ofm <- readRDS(file.path(base.dir, dir, "ofm_saep.rds")) %>% as.data.table()
   attributes <- c("POP", "HHP","GQ", "HU", "OHU")
   cols <- apply(expand.grid(attributes, years), 1, function(x) paste0(x[1], x[2]))
   allcols <- c("COUNTYFP", cols)
@@ -103,10 +99,11 @@ convert.file(filename, inputfileformat = "csv", outputfileformat = "rds")
 
 # QC ----------------------------------------------------------------------
 
+# df <- readRDS(file.path(base.dir, dir, "ofm_saep.rds"))
 
-# years <- c(as.character(2020:2023))
+# years <- c(as.character(2020:2024))
 # dt <- qc.rds(years)
-# print(dt)
+# dt
 # write.xlsx(dt, file.path(base.dir, dir, "quality_check", paste0("ofm_saep_qc_", Sys.Date(), "_2.xlsx")))
 
 
