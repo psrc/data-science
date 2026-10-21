@@ -1,6 +1,6 @@
 # After running 01-download-saep.R, this script will take original ofm saep format, subset for the Central Puget Sound Region if necessary, 
 # and convert to various formats used at PSRC
-#  revised by Christy Lam 2024-10-17
+#  revised by Christy Lam 2026-10-21
 
 # For QC (comparing April 1 to Block estimates), download from here and save to sub-dir "quality_check/published": https://ofm.wa.gov/washington-data-research/population-demographics/population-estimates/april-1-official-population-estimates
 
@@ -10,14 +10,14 @@ library(openxlsx)
 library(tidyverse)
 
 base.dir <- "J:/OtherData/OFM/SAEP"
-dir <- "SAEP Extract_2024-10-16"
+dir <- "SAEP Extract_2026-10-21"
 data.dir <- file.path(dir, "original")
-filename <- "saep_block20.csv"
+filename <- "block20.csv"
 
 id.cols <- c("STATEFP", "COUNTYFP", "TRACTCE", "BLOCKCE", "GEOID20")
 counties <- c("33", "35", "53", "61")
-years <- c(as.character(2020:2024))
-version <- 'September 17, 2024' # taken from OFM block metadata
+years <- c(as.character(2020:2026))
+version <- 'August 28, 2026' # taken from OFM block metadata
 
 # functions ---------------------------------------------------------------
 
@@ -37,7 +37,7 @@ convert.file <- function(filename, inputfileformat, outputfileformat){
   if (inputfileformat == "xlsx") df <- read.xlsx(file.path(base.dir, data.dir, filename)) %>% as.data.table()
   if (inputfileformat == "csv")   df <- fread(file.path(base.dir, data.dir, filename)) %>% as.data.table()
   
-  # 2020-24 data format
+  # 2020-26 data format
   dt <- filter.for.psrc(df)
  
   if (outputfileformat == "dbf") write.dbf(dt, file.path(base.dir, dir, "ofm_saep.dbf"))
@@ -100,10 +100,9 @@ convert.file(filename, inputfileformat = "csv", outputfileformat = "rds")
 # QC ----------------------------------------------------------------------
 
 # df <- readRDS(file.path(base.dir, dir, "ofm_saep.rds"))
-
-# years <- c(as.character(2020:2024))
+# 
+# years <- c(as.character(2020:2026))
 # dt <- qc.rds(years)
-# dt
-# write.xlsx(dt, file.path(base.dir, dir, "quality_check", paste0("ofm_saep_qc_", Sys.Date(), "_2.xlsx")))
+# write.xlsx(dt, file.path(base.dir, dir, "quality_check", paste0("ofm_saep_qc_", Sys.Date(), ".xlsx")))
 
 

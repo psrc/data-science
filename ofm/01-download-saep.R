@@ -2,8 +2,13 @@
 
 library(tidyverse)
 
-sub_dir <- paste0("SAEP Extract_", "2024-10-16")
-# sub_dir <- paste0("SAEP Extract_", Sys.Date())
+# Store original setting
+old_timeout <- getOption("timeout")
+
+options(timeout = max(600, old_timeout))
+
+# sub_dir <- paste0("SAEP Extract_", "2024-10-16")
+sub_dir <- paste0("SAEP Extract_", Sys.Date())
 
 # Does it exist in the base dir?
 base_dir <- "J:/OtherData/OFM/SAEP"
@@ -17,7 +22,7 @@ if(file.exists(file.path(base_dir, sub_dir)) == FALSE) {
   # add published to 'quality_check' dir
 }
 
-url <- "https://ofm.wa.gov/sites/default/files/public/dataresearch/pop/smallarea/data/xlsx/saep_block20.zip"
+url <- "https://ofm.wa.gov/wp-content/uploads/sites/default/files/public/dataresearch/pop/smallarea/data/xlsx/saep_block20.zip"
 hu_url <- "https://ofm.wa.gov/sites/default/files/public/dataresearch/pop/april1/ofm_april1_housing.xlsx"
 pop_url <- "https://ofm.wa.gov/sites/default/files/public/dataresearch/pop/april1/ofm_april1_population_final.xlsx"  
 
@@ -31,5 +36,7 @@ download.file(url, file.path(out_file_path, file_name, sep = ""), mode = "wb")
 
 # extract file
 zip_file <- file.path(out_file_path, file_name)
-unzip(zip_file, exdir= out_file_path)
+# unzip(zip_file, exdir= out_file_path) # Very slow! just extract manually in Explorer
 
+# Always restore the original setting
+options(timeout = old_timeout)
